@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "es2022",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": false,
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "paths": {
+      "@type": ["src/types/"],
+      "@type/*": ["src/types/*"],
+      "@entity": ["src/entity/"],
+      "@entity/*": ["src/entity/*"],
+      "@utils": ["src/utils/"],
+      "@utils/*": ["src/utils/*"],
+      "@modules": ["src/modules/"],
+      "@modules/*": ["src/modules/*"]
+    },
+    "allowJs": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules"],
+  "ts-node": {
+    "files": true,
+    "compilerOptions": {
+      "module": "commonjs",
+      "allowJs": true
+    }
+  }
+}

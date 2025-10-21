@@ -1,0 +1,6 @@
+# production
+/dist
+/seed
+/seed-prod
+
+*.css
