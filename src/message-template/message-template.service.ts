@@ -2,18 +2,17 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MessageTemplate, TemplateType } from './message-template.entity';
-import { User } from '../user/user.entity';
-import { FieldMapping } from '@type/user';
+import { Webhook } from 'src/webhook/webhook.entity';
+import { MessageFieldsService } from 'src/message-fields/message-fields.service';
 
 @Injectable()
 export class MessageTemplateService {
   private readonly logger = new Logger(MessageTemplateService.name);
 
   constructor(
+    private readonly messageFieldsService: MessageFieldsService,
     @InjectRepository(MessageTemplate)
     private messageTemplateRepository: Repository<MessageTemplate>,
-    @InjectRepository(User)
-    private userRepository: Repository<User>,
   ) {}
 
   /**
@@ -24,7 +23,6 @@ export class MessageTemplateService {
     templateData: {
       name: string;
       type: TemplateType;
-      isDefault?: boolean;
       template: string;
     },
   ): Promise<MessageTemplate> {
@@ -34,31 +32,13 @@ export class MessageTemplateService {
     // );
     // this.logger.log('User ID:', userId);
 
-    // Если это шаблон по умолчанию, снимаем флаг с других шаблонов этого типа
-    if (templateData.isDefault) {
-      await this.messageTemplateRepository.update(
-        { user_id: userId, type: templateData.type },
-        { isDefault: false },
-      );
-    }
-
     // Создаем entity напрямую
     const template = new MessageTemplate();
-    template.name = templateData.name || 'Unnamed Template';
     template.type = templateData.type;
-    template.template = templateData.template || '';
-    template.isDefault = templateData.isDefault || false;
-    template.isActive = true;
+    template.messageTemplate = templateData.template || '';
     template.user_id = userId;
 
-    // this.logger.log(
-    //   'Created template entity:',
-    //   JSON.stringify(template, null, 2),
-    // );
-
     const savedTemplate = await this.messageTemplateRepository.save(template);
-
-    // this.logger.log('Template saved successfully:', savedTemplate.id);
 
     return savedTemplate;
   }
@@ -77,21 +57,55 @@ export class MessageTemplateService {
 
     return this.messageTemplateRepository.find({
       where,
-      order: { isDefault: 'DESC', createdAt: 'DESC' },
+      order: { createdAt: 'DESC' },
     });
   }
 
   /**
    * Получает все шаблоны пользователя
    */
-  async getTemplateById(
-    userId: string,
-    templateId: string,
-  ): Promise<MessageTemplate> {
-    const where: any = { id: templateId, user_id: userId, isActive: true };
+  async getTemplates(userId: string): Promise<{
+    userTemplates: MessageTemplate[];
+    variablesFromMessages: string[];
+  }> {
+    const getUserFields = await this.messageFieldsService.getFieldsByUserId(
+      userId,
+    );
 
-    return this.messageTemplateRepository.findOne({
-      where,
+    this.logger.log(
+      'getExampleMessages=',
+      JSON.stringify(getUserFields, null, 2),
+    );
+    const userTemplates = await this.messageTemplateRepository.find({
+      where: { user_id: userId },
+    });
+
+    return {
+      userTemplates,
+      variablesFromMessages: getUserFields.fields,
+    };
+  }
+
+  /**
+   * Обновляем шаблон пользователя
+   */
+  async updateTemplate(
+    userId: string,
+    type: TemplateType,
+    messageTemplate: string,
+  ): Promise<void> {
+    const templateData = await this.messageTemplateRepository.findOne({
+      where: { type: type, user_id: userId },
+    });
+
+    if (!templateData) {
+      throw new NotFoundException('Шаблон не найден');
+    }
+
+    // Применяем изменения
+    this.messageTemplateRepository.save({
+      ...templateData,
+      messageTemplate: messageTemplate,
     });
   }
 
@@ -106,58 +120,8 @@ export class MessageTemplateService {
       where: {
         user_id: userId,
         type,
-        isDefault: true,
-        isActive: true,
       },
     });
-  }
-
-  /**
-   * Обновляет шаблон
-   */
-  async updateTemplate(
-    templateId: string,
-    userId: string,
-    updateData: {
-      name?: string;
-      template?: string;
-      fieldMappings?: FieldMapping[];
-      isDefault?: boolean;
-      isActive?: boolean;
-    },
-  ): Promise<MessageTemplate> {
-    const template = await this.messageTemplateRepository.findOne({
-      where: { id: templateId, user_id: userId },
-    });
-
-    if (!template) {
-      throw new NotFoundException('Шаблон не найден');
-    }
-
-    // Если устанавливаем как шаблон по умолчанию, снимаем флаг с других
-    if (updateData.isDefault) {
-      await this.messageTemplateRepository.update(
-        { user_id: userId, type: template.type },
-        { isDefault: false },
-      );
-    }
-
-    Object.assign(template, updateData);
-    return this.messageTemplateRepository.save(template);
-  }
-
-  /**
-   * Удаляет шаблон (мягкое удаление)
-   */
-  async deleteTemplate(templateId: string, userId: string): Promise<void> {
-    const result = await this.messageTemplateRepository.update(
-      { id: templateId, user_id: userId },
-      { isActive: false },
-    );
-
-    if (result.affected === 0) {
-      throw new NotFoundException('Шаблон не найден');
-    }
   }
 
   /**
@@ -166,13 +130,7 @@ export class MessageTemplateService {
   async formatMessage(
     userId: string,
     type: TemplateType,
-    webhookData: {
-      siteName: string;
-      formName: string;
-      data: Record<string, any>;
-      advertisingParams?: Record<string, any>;
-      createdAt: Date;
-    },
+    webhook: Webhook,
   ): Promise<string> {
     // Получаем шаблон по умолчанию или первый доступный
     let template = await this.getDefaultTemplate(userId, type);
@@ -184,79 +142,65 @@ export class MessageTemplateService {
 
     if (!template) {
       // Fallback к стандартному форматированию
-      return this.getDefaultMessageFormat(webhookData);
+      return this.getDefaultMessageFormat(webhook);
     }
-
-    return this.processTemplate(template.template, webhookData);
+    return this.replaceTemplateVariables(template.messageTemplate, webhook);
   }
 
-  /**
-   * Обрабатывает шаблон с подстановкой переменных
-   */
-  private processTemplate(
-    template: string,
-    webhookData: {
-      siteName: string;
-      formName: string;
-      data: Record<string, any>;
-      advertisingParams?: Record<string, any>;
-      createdAt: Date;
-    },
-    fieldMappings: FieldMapping[] = [],
-  ): string {
-    let result = template;
+  /* функция замены переменных в шаблоне */
+  private replaceTemplateVariables(template, data) {
+    return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
+      // Убираем пробелы вокруг ключа
+      const cleanKey = key.trim();
 
-    // Базовые переменные
-    const variables = {
-      siteName: webhookData.siteName,
-      formName: webhookData.formName,
-      time: webhookData.createdAt.toLocaleString('ru-RU'),
-      date: webhookData.createdAt.toLocaleDateString('ru-RU'),
-    };
+      // Разбиваем ключ по точкам для вложенных объектов
+      const keys = cleanKey.split('.');
 
-    // Добавляем поля формы из маппинга
-    const selectedMappings = fieldMappings.filter((m) => m.isSelected);
-    selectedMappings.forEach((mapping) => {
-      const value = this.getFieldValue(webhookData.data, mapping.webhookField);
-      variables[mapping.displayTitle] = value || '';
-    });
+      // Рекурсивно получаем значение из объекта
+      let value = data;
+      for (const k of keys) {
+        if (value && typeof value === 'object' && k in value) {
+          value = value[k];
+        } else {
+          // Если ключ не найден, возвращаем оригинальный placeholder
+          return match;
+        }
+      }
 
-    // Добавляем рекламные параметры
-    if (webhookData.advertisingParams) {
-      Object.entries(webhookData.advertisingParams).forEach(([key, value]) => {
-        variables[`utm_${key}`] = value;
-      });
-    }
-
-    // Заменяем переменные в шаблоне
-    Object.entries(variables).forEach(([key, value]) => {
-      const regex = new RegExp(`{{${key}}}`, 'g');
-      result = result.replace(regex, String(value));
-    });
-
-    return result;
-  }
-
-  /**
-   * Получает значение поля по пути (например, "user.name")
-   */
-  private getFieldValue(data: Record<string, any>, fieldPath: string): any {
-    const parts = fieldPath.split('.');
-    let value: any = data;
-
-    for (const part of parts) {
+      // Если значение undefined, null или объект - возвращаем пустую строку
       if (
-        typeof value === 'object' &&
-        value !== null &&
-        !Array.isArray(value)
+        value === null ||
+        value === undefined ||
+        (typeof value === 'object' && !Array.isArray(value))
       ) {
-        value = value[part];
+        return '';
+      }
+
+      return String(value);
+    });
+  }
+
+  // Функция для получения вложенных значений из объекта
+  private getNestedValue(obj, path) {
+    // Если путь без точек - ищем прямое свойство
+    if (!path.includes('.')) {
+      return obj[path];
+    }
+
+    // Разбиваем путь по точкам
+    const keys = path.split('.');
+    let current = obj;
+
+    // Проходим по всем ключам пути
+    for (const key of keys) {
+      if (current && typeof current === 'object' && key in current) {
+        current = current[key];
       } else {
-        return undefined;
+        return undefined; // Если путь не найден
       }
     }
 
-    return value;
+    return current;
   }
 
   /**

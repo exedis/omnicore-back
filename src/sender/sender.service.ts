@@ -18,8 +18,6 @@ export class SenderService {
     private webhookRepository: Repository<Webhook>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
-    @InjectRepository(SocialMessage)
-    private socialMessageRepository: Repository<SocialMessage>,
     private telegramBotService: TelegramBotService,
     private socialService: SocialService,
     private messageTemplateService: MessageTemplateService,
@@ -75,13 +73,7 @@ export class SenderService {
       const messageText = await this.messageTemplateService.formatMessage(
         userId,
         TemplateType.TELEGRAM,
-        {
-          siteName: webhook.siteName,
-          formName: webhook.formName,
-          data: webhook.data,
-          advertisingParams: webhook.advertisingParams,
-          createdAt: webhook.createdAt,
-        },
+        webhook,
       );
 
       // 5. Создаем запись о социальном сообщении через SocialService
@@ -153,7 +145,7 @@ export class SenderService {
    */
   async getMessageHistory(
     userId: string,
-    limit: number = 50,
+    limit = 50,
   ): Promise<SocialMessage[]> {
     return this.socialService.getMessageHistory(userId, limit);
   }

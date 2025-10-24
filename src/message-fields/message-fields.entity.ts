@@ -8,10 +8,9 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { User } from '../user/user.entity';
-import { FieldGroup } from '@type/fieldGroup';
 
-@Entity('field_groups')
-export class FieldGroupEntity {
+@Entity('message_fields')
+export class MessageFields {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -22,11 +21,8 @@ export class FieldGroupEntity {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @Column()
-  title: string; // Название группы (например, "Основная группа")
-
   @Column({ type: 'jsonb', nullable: true })
-  fieldGroup: FieldGroup; // Группа полей для этой группы
+  fields: string[];
 
   @CreateDateColumn()
   createdAt: Date;

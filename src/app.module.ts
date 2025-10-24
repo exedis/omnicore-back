@@ -16,6 +16,8 @@ import { ApiKey } from './api-key/api-key.entity';
 import { SocialMessage } from './social/social-message.entity';
 import { TelegramAuthToken } from './telegram-bot/telegram-auth-token.entity';
 import { MessageTemplate } from './message-template/message-template.entity';
+import { MessageFields } from './message-fields/message-fields.entity';
+import { MessageFieldsModule } from './message-fields/message-fields.module';
 
 @Module({
   imports: [
@@ -36,6 +38,7 @@ import { MessageTemplate } from './message-template/message-template.entity';
         SocialMessage,
         TelegramAuthToken,
         MessageTemplate,
+        MessageFields,
       ],
       synchronize: process.env.NODE_ENV !== 'production',
     }),
@@ -46,6 +49,7 @@ import { MessageTemplate } from './message-template/message-template.entity';
     SocialModule,
     TelegramBotModule,
     MessageTemplateModule,
+    MessageFieldsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

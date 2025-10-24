@@ -1,15 +1,14 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { FieldGroupEntity } from './field-group.entity';
 import { User } from '../user/user.entity';
-import { FieldGroupService } from './field-group.service';
-import { FieldGroupController } from './field-group.controller';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { MessageFields } from './message-fields.entity';
+import { MessageFieldsService } from './message-fields.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([FieldGroupEntity, User]),
+    TypeOrmModule.forFeature([MessageFields, User]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -19,8 +18,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
       inject: [ConfigService],
     }),
   ],
-  controllers: [FieldGroupController],
-  providers: [FieldGroupService],
-  exports: [FieldGroupService],
+  // controllers: [MessageFieldsController],
+  providers: [MessageFieldsService],
+  exports: [MessageFieldsService],
 })
-export class FieldGroupModule {}
+export class MessageFieldsModule {}

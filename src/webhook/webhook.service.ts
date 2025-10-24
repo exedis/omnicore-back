@@ -7,6 +7,7 @@ import { Webhook } from './webhook.entity';
 import { CreateWebhookDto, WebhookQueryDto } from './dto/webhook.dto';
 import { SocialService } from '../social/social.service';
 import { SenderService } from '../sender/sender.service';
+import { MessageFieldsService } from 'src/message-fields/message-fields.service';
 
 @Injectable()
 export class WebhookService {
@@ -15,7 +16,7 @@ export class WebhookService {
   constructor(
     @InjectRepository(Webhook)
     private webhookRepository: Repository<Webhook>,
-    private socialService: SocialService,
+    private messageFields: MessageFieldsService,
     private senderService: SenderService,
   ) {}
 
@@ -29,27 +30,14 @@ export class WebhookService {
     });
 
     const savedWebhook = await this.webhookRepository.save(webhook);
+    this.messageFields.updateFields(userId, webhook);
 
-    // Автоматически обрабатываем сообщение через социальный модуль
+    // Автоматически обрабатываем сообщение и отправляем в Telegram
     try {
       await this.senderService.processWebhookMessage(savedWebhook.id, userId);
     } catch (error) {
-      console.error(
-        'Ошибка при обработке вебхука через социальный модуль:',
-        error.message,
-      );
-      // Не прерываем выполнение, если социальный модуль не смог обработать сообщение
-    }
-
-    // Автоматически обрабатываем сообщение через sender модуль для отправки в Telegram
-    try {
-      await this.senderService.processWebhookMessage(savedWebhook.id, userId);
-    } catch (error) {
-      console.error(
-        'Ошибка при обработке вебхука через sender модуль:',
-        error.message,
-      );
-      // Не прерываем выполнение, если sender модуль не смог обработать сообщение
+      console.error('Ошибка при обработке вебхука:', error.message);
+      // Не прерываем выполнение, если обработка не удалась
     }
 
     return savedWebhook;
@@ -242,4 +230,49 @@ export class WebhookService {
       order: { createdAt: 'DESC' },
     });
   }
+
+  /**
+   * Получает переменные из сообщения
+   */
+  async getAllMessageVariables(userId: string): Promise<string[]> {
+    const getExampleMessages = await this.webhookRepository.find({
+      where: { user_id: userId },
+      order: { createdAt: 'DESC' },
+      take: 20, //TODO: подумать как лучше сделать в целом
+    });
+    return this.extractAvailableFields(getExampleMessages);
+  }
+
+  extractAvailableFields = (
+    exampleMessages: Webhook[],
+    prefix = '',
+  ): string[] => {
+    const fields: Set<string> = new Set();
+
+    exampleMessages.forEach((exampleMessage) => {
+      for (const key in exampleMessage.data) {
+        if (exampleMessage.data.hasOwnProperty(key)) {
+          const fieldPath = prefix ? `${prefix}.${key}` : key;
+
+          if (
+            typeof exampleMessage.data[key] === 'object' &&
+            exampleMessage.data[key] !== null &&
+            !Array.isArray(exampleMessage.data[key])
+          ) {
+            // Рекурсивно извлекаем поля из вложенных объектов
+            const nestedFields = this.extractAvailableFields(
+              [{ data: exampleMessage.data[key] }] as Webhook[],
+              fieldPath,
+            );
+            nestedFields.forEach((field) => fields.add(field));
+          } else {
+            // Добавляем поле
+            fields.add(fieldPath);
+          }
+        }
+      }
+    });
+
+    return Array.from(fields);
+  };
 }

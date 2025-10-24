@@ -57,6 +57,11 @@ export class WebhookController {
     return this.webhookService.findOne(id, userId);
   }
 
+  @Get('/all-variables')
+  async getAllVariables(@UserId() userId: string) {
+    return this.webhookService.getAllMessageVariables(userId);
+  }
+
   @Delete('/:id')
   async remove(@Param('id') id: string, @UserId() userId: string) {
     await this.webhookService.delete(id, userId);

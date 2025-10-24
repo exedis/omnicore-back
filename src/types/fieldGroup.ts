@@ -7,11 +7,11 @@ export interface AssociatedField {
 export interface FieldGroup {
   id: string;
   title: string;
-  field: AssociatedField;
+  fields: AssociatedField[];
 }
 
 export interface FieldGroupResponse {
   id: string;
   title: string;
-  field: AssociatedField;
+  fields: AssociatedField[];
 }

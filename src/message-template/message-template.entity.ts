@@ -16,6 +16,8 @@ export enum TemplateType {
   SMS = 'sms',
 }
 
+const defaultTemplate = `Заявка,\n Имя: {{name}}; \n Телефон:{{phone}}`;
+
 @Entity('message_templates')
 export class MessageTemplate {
   @PrimaryGeneratedColumn('uuid')
@@ -28,27 +30,15 @@ export class MessageTemplate {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @Column()
-  name: string; // Название шаблона (например, "Основной шаблон")
-
   @Column({
     type: 'enum',
     enum: TemplateType,
     default: TemplateType.TELEGRAM,
   })
-  type: TemplateType; // Тип платформы для которой шаблон
+  type: TemplateType;
 
-  @Column({ type: 'text' })
-  template: string; // Шаблон сообщения с переменными типа {{fieldName}}
-
-  @Column({ default: false })
-  isDefault: boolean; // Является ли шаблоном по умолчанию
-
-  @Column({ default: true })
-  isActive: boolean; // Активен ли шаблон
-
-  @Column({ type: 'jsonb', nullable: true })
-  metadata: Record<string, any>; // Дополнительные настройки шаблона
+  @Column({ type: 'text', default: defaultTemplate })
+  messageTemplate: string;
 
   @CreateDateColumn()
   createdAt: Date;
