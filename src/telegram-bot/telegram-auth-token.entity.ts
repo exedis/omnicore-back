@@ -7,7 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
-import { User } from '../user/user.entity';
+import { User } from '../auth/user.entity';
 
 @Entity('telegram_auth_tokens')
 export class TelegramAuthToken {

@@ -4,14 +4,15 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TelegramBotController } from './telegram-bot.controller';
 import { TelegramBotApiController } from './telegram-bot-api.controller';
-import { User } from '../user/user.entity';
+import { User } from '../auth/user.entity';
 import { TelegramAuthToken } from './telegram-auth-token.entity';
 import { JwtModule } from '@nestjs/jwt';
 import { TelegramBotService } from './telegram-bot.service';
+import { TelegramSettings } from 'src/message-settings/telegram/telegram-settings.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, TelegramAuthToken]),
+    TypeOrmModule.forFeature([User, TelegramAuthToken, TelegramSettings]),
     TelegrafModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

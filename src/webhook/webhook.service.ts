@@ -1,13 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Observable, Subject } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { Webhook } from './webhook.entity';
 import { CreateWebhookDto, WebhookQueryDto } from './dto/webhook.dto';
-import { SocialService } from '../social/social.service';
-import { SenderService } from '../sender/sender.service';
 import { MessageFieldsService } from 'src/message-fields/message-fields.service';
+import { MessageSettingsService } from 'src/message-settings/message-settings.service';
+import { TelegramSenderService } from 'src/message-settings/telegram/telegram-sender.service';
+import { EmailSenderService } from 'src/message-settings/email/email-sender.service';
 
 @Injectable()
 export class WebhookService {
@@ -17,13 +18,16 @@ export class WebhookService {
     @InjectRepository(Webhook)
     private webhookRepository: Repository<Webhook>,
     private messageFields: MessageFieldsService,
-    private senderService: SenderService,
+    private messageSettingsService: MessageSettingsService,
+    private telegramSenderService: TelegramSenderService,
+    private emailSenderService: EmailSenderService,
   ) {}
 
   async create(
     createWebhookDto: CreateWebhookDto,
     userId: string,
   ): Promise<Webhook> {
+    // Создаем и сохраняем webhook
     const webhook = this.webhookRepository.create({
       ...createWebhookDto,
       user_id: userId,
@@ -32,13 +36,26 @@ export class WebhookService {
     const savedWebhook = await this.webhookRepository.save(webhook);
     this.messageFields.updateFields(userId, webhook);
 
-    // Автоматически обрабатываем сообщение и отправляем в Telegram
-    try {
-      await this.senderService.processWebhookMessage(savedWebhook.id, userId);
-    } catch (error) {
-      console.error('Ошибка при обработке вебхука:', error.message);
+    // Загружаем все настройки параллельно одним запросом
+    const notificationSettings =
+      await this.messageSettingsService.getAllSettingsForNotification(userId);
+
+    // Отправляем уведомления параллельно (не ждем завершения)
+    Promise.allSettled([
+      this.telegramSenderService.sendWebhookNotification(
+        savedWebhook,
+        notificationSettings.telegram.settings,
+        notificationSettings.telegram.template,
+      ),
+      this.emailSenderService.sendWebhookNotification(
+        savedWebhook,
+        notificationSettings.email.settings,
+        notificationSettings.email.template,
+      ),
+    ]).catch((error) => {
+      console.error('Ошибка при отправке уведомлений:', error.message);
       // Не прерываем выполнение, если обработка не удалась
-    }
+    });
 
     return savedWebhook;
   }

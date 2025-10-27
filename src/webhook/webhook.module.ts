@@ -5,19 +5,17 @@ import { WebhookService } from './webhook.service';
 import { WebhookController } from './webhook.controller';
 import { PublicWebhookController } from './public-webhook.controller';
 import { ApiKeyModule } from '../api-key/api-key.module';
-import { SocialModule } from '../social/social.module';
-import { SenderModule } from '../sender/sender.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { MessageFieldsModule } from 'src/message-fields/message-fields.module';
+import { MessageSettingsModule } from 'src/message-settings/message-settings.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Webhook]),
     ApiKeyModule,
-    SocialModule,
     MessageFieldsModule,
-    SenderModule,
+    MessageSettingsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

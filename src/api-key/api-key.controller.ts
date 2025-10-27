@@ -7,13 +7,11 @@ import {
   Body,
   Param,
   UseGuards,
-  Request,
 } from '@nestjs/common';
 import { ApiKeyService } from './api-key.service';
 import { CreateApiKeyDto, UpdateApiKeyDto } from './dto/api-key.dto';
 import { AuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UserId } from '../common/decorators/user-id.decorator';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @Controller('api-keys')
 @UseGuards(AuthGuard)

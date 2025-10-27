@@ -1,17 +1,11 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from '../user/user.entity';
 import { TelegramAuthToken } from './telegram-auth-token.entity';
 import { randomBytes } from 'crypto';
-import { JwtService } from '@nestjs/jwt';
-import { Observable, Subject, interval, map, filter } from 'rxjs';
+import { Observable, Subject, map, filter } from 'rxjs';
 import { MessageEvent } from '@nestjs/common';
+import { TelegramSettings } from 'src/message-settings/telegram/telegram-settings.entity';
 
 @Injectable()
 export class TelegramBotService {
@@ -22,11 +16,10 @@ export class TelegramBotService {
   }>();
 
   constructor(
-    @InjectRepository(User)
-    private userRepository: Repository<User>,
     @InjectRepository(TelegramAuthToken)
     private telegramAuthTokenRepository: Repository<TelegramAuthToken>,
-    private jwtService: JwtService,
+    @InjectRepository(TelegramSettings)
+    private telegramSettingsRepository: Repository<TelegramSettings>,
   ) {}
 
   // Создание токена авторизации для пользователя
@@ -86,12 +79,12 @@ export class TelegramBotService {
       }
 
       // Проверяем, есть ли уже настройки Telegram для этого пользователя
-      const existingUser = await this.userRepository.findOne({
-        where: { id: authToken.user_id },
-        select: ['isTelegramEnabled', 'telegramChatId'],
+      const existingSettings = await this.telegramSettingsRepository.findOne({
+        where: { user_id: authToken.user_id },
+        select: ['isEnabled', 'chatId'],
       });
 
-      if (existingUser && existingUser.telegramChatId) {
+      if (existingSettings && existingSettings.chatId) {
         return '⚠️ Пользователь уже авторизован в системе. Если это ваш аккаунт, можете использовать систему.';
       }
 
@@ -103,28 +96,36 @@ export class TelegramBotService {
 
       await this.telegramAuthTokenRepository.save(authToken);
 
-      // Обновляем настройки пользователя
-      const user = await this.userRepository.findOne({
-        where: { id: authToken.user_id },
+      // Создаем или обновляем настройки пользователя
+      let settings = await this.telegramSettingsRepository.findOne({
+        where: { user_id: authToken.user_id },
       });
 
-      if (user) {
-        user.isTelegramEnabled = true;
-        user.telegramChatId = chatId;
-        user.telegramUsername = userInfo.username;
-        user.telegramSettings = {
-          username: userInfo.username,
-          firstName: userInfo.first_name,
-          lastAuthDate: new Date().toISOString(),
-        };
-        await this.userRepository.save(user);
-
-        // Отправляем SSE уведомление об успешной авторизации
-        this.statusSubject.next({
-          userId: authToken.user_id,
-          isAuthorized: true,
+      if (!settings) {
+        // Создаем новую запись если её нет
+        settings = this.telegramSettingsRepository.create({
+          user_id: authToken.user_id,
+          isEnabled: false,
         });
       }
+
+      // Обновляем настройки Telegram
+      settings.isEnabled = true;
+      settings.chatId = chatId;
+      settings.settings = {
+        ...settings.settings,
+        username: userInfo.username,
+        firstName: userInfo.first_name,
+        lastAuthDate: new Date().toISOString(),
+      };
+
+      await this.telegramSettingsRepository.save(settings);
+
+      // Отправляем SSE уведомление об успешной авторизации
+      this.statusSubject.next({
+        userId: authToken.user_id,
+        isAuthorized: true,
+      });
 
       // Отправляем сообщение об успешной авторизации
       return `✅ Авторизация успешна!\n\n👤 Пользователь: ${authToken.user.name}\n📧 Email: ${authToken.user.email}\n\nТеперь вы будете получать уведомления о новых сообщениях в системе.`;
@@ -164,12 +165,12 @@ export class TelegramBotService {
     userId: string,
     message: string,
   ): Promise<void> {
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-      select: ['isTelegramEnabled', 'telegramChatId'],
+    const settings = await this.telegramSettingsRepository.findOne({
+      where: { user_id: userId },
+      select: ['isEnabled', 'chatId'],
     });
 
-    if (!user?.isTelegramEnabled || !user?.telegramChatId) {
+    if (!settings?.isEnabled || !settings?.chatId) {
       this.logger.warn(
         `Пользователь ${userId} не настроил Telegram или отключил уведомления`,
       );
@@ -194,7 +195,7 @@ export class TelegramBotService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          chat_id: user.telegramChatId,
+          chat_id: settings.chatId,
           text: message,
           parse_mode: 'HTML',
         }),
@@ -209,7 +210,7 @@ export class TelegramBotService {
 
       const result = await response.json();
       this.logger.log(
-        `Сообщение успешно отправлено пользователю ${userId} (chatId: ${user.telegramChatId}), messageId: ${result.result.message_id}`,
+        `Сообщение успешно отправлено пользователю ${userId} (chatId: ${settings.chatId}), messageId: ${result.result.message_id}`,
       );
     } catch (error) {
       this.logger.error(
@@ -224,50 +225,51 @@ export class TelegramBotService {
     userId: string,
     chatId: string,
     userInfo: any,
-  ): Promise<User> {
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
+  ): Promise<TelegramSettings> {
+    let settings = await this.telegramSettingsRepository.findOne({
+      where: { user_id: userId },
     });
 
-    if (!user) {
-      throw new NotFoundException('Пользователь не найден');
+    if (!settings) {
+      // Создаем новую запись если её нет
+      settings = this.telegramSettingsRepository.create({
+        user_id: userId,
+        isEnabled: false,
+      });
     }
 
     // Обновляем настройки пользователя
-    user.isTelegramEnabled = true;
-    user.telegramChatId = chatId;
-    user.telegramUsername = userInfo.username;
-    user.telegramSettings = {
-      ...user.telegramSettings,
+    settings.isEnabled = true;
+    settings.chatId = chatId;
+    settings.settings = {
+      ...settings.settings,
       username: userInfo.username,
       firstName: userInfo.first_name,
       lastName: userInfo.last_name,
       lastAuthDate: new Date().toISOString(),
     };
 
-    return this.userRepository.save(user);
+    return await this.telegramSettingsRepository.save(settings);
   }
 
   // Проверка, авторизован ли пользователь в Telegram
   async isUserAuthorizedInTelegram(userId: string): Promise<boolean> {
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-      select: ['isTelegramEnabled', 'telegramChatId'],
+    const settings = await this.telegramSettingsRepository.findOne({
+      where: { user_id: userId },
+      select: ['isEnabled', 'chatId'],
     });
 
-    return !!(user?.isTelegramEnabled && user?.telegramChatId);
+    return !!(settings?.isEnabled && settings?.chatId);
   }
 
   // Получение chat_id пользователя
   async getUserChatId(userId: string): Promise<string | null> {
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-      select: ['isTelegramEnabled', 'telegramChatId'],
+    const settings = await this.telegramSettingsRepository.findOne({
+      where: { user_id: userId },
+      select: ['isEnabled', 'chatId'],
     });
 
-    return user?.isTelegramEnabled && user?.telegramChatId
-      ? user.telegramChatId
-      : null;
+    return settings?.isEnabled && settings?.chatId ? settings.chatId : null;
   }
 
   // Получение активных токенов пользователя

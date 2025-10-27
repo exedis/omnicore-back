@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MessageTemplate } from './message-template.entity';
-import { User } from '../user/user.entity';
+import { User } from '../auth/user.entity';
 import { MessageTemplateService } from './message-template.service';
 import { MessageTemplateController } from './message-template.controller';
 import { JwtModule } from '@nestjs/jwt';

@@ -72,10 +72,10 @@ export class MessageTemplateService {
       userId,
     );
 
-    this.logger.log(
-      'getExampleMessages=',
-      JSON.stringify(getUserFields, null, 2),
-    );
+    // this.logger.log(
+    //   'getExampleMessages=',
+    //   JSON.stringify(getUserFields, null, 2),
+    // );
     const userTemplates = await this.messageTemplateRepository.find({
       where: { user_id: userId },
     });
@@ -181,27 +181,27 @@ export class MessageTemplateService {
   }
 
   // Функция для получения вложенных значений из объекта
-  private getNestedValue(obj, path) {
-    // Если путь без точек - ищем прямое свойство
-    if (!path.includes('.')) {
-      return obj[path];
-    }
+  // private getNestedValue(obj, path) {
+  //   // Если путь без точек - ищем прямое свойство
+  //   if (!path.includes('.')) {
+  //     return obj[path];
+  //   }
 
-    // Разбиваем путь по точкам
-    const keys = path.split('.');
-    let current = obj;
+  //   // Разбиваем путь по точкам
+  //   const keys = path.split('.');
+  //   let current = obj;
 
-    // Проходим по всем ключам пути
-    for (const key of keys) {
-      if (current && typeof current === 'object' && key in current) {
-        current = current[key];
-      } else {
-        return undefined; // Если путь не найден
-      }
-    }
+  //   // Проходим по всем ключам пути
+  //   for (const key of keys) {
+  //     if (current && typeof current === 'object' && key in current) {
+  //       current = current[key];
+  //     } else {
+  //       return undefined; // Если путь не найден
+  //     }
+  //   }
 
-    return current;
-  }
+  //   return current;
+  // }
 
   /**
    * Стандартный формат сообщения (fallback)
