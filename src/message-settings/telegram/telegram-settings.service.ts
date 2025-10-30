@@ -2,6 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TelegramSettings } from './telegram-settings.entity';
+import { TemplateType } from '@type/settings';
+import { MessageTemplateService } from 'src/message-template/message-template.service';
+import { UpdateTelegramSettingsDto } from '../dto/update-telegram-settings.dto';
 
 @Injectable()
 export class TelegramSettingsService {
@@ -10,6 +13,7 @@ export class TelegramSettingsService {
   constructor(
     @InjectRepository(TelegramSettings)
     private telegramSettingsRepository: Repository<TelegramSettings>,
+    private messageTemplateService: MessageTemplateService,
   ) {}
 
   /**
@@ -24,28 +28,40 @@ export class TelegramSettingsService {
   /**
    * Включает Telegram
    */
-  async enableTelegram(userId: string): Promise<void> {
-    await this.upsertTelegramSettings(userId, { isEnabled: true });
-  }
+  // async enableTelegram(userId: string): Promise<void> {
+  //   await this.upsertTelegramSettings(userId, { isEnabled: true });
+  // }
 
   /**
    * Отключает Telegram
    */
-  async disableTelegram(userId: string): Promise<void> {
-    await this.upsertTelegramSettings(userId, { isEnabled: false });
-  }
+  // async disableTelegram(userId: string): Promise<void> {
+  //   await this.upsertTelegramSettings(userId, { isEnabled: false });
+  // }
 
   /**
    * Обновляет настройки Telegram
    */
   async updateTelegramSettings(
     userId: string,
-    settings: {
-      chatId?: string;
-      settings?: Record<string, any>;
-    },
+    settings: UpdateTelegramSettingsDto,
   ): Promise<void> {
-    await this.upsertTelegramSettings(userId, settings);
+    await this.upsertTelegramSettings(userId, {
+      isEnabled: settings.isEnabled,
+    });
+    await this.messageTemplateService.updateTemplate(
+      userId,
+      settings.messageTemplate,
+      settings.isEnabled,
+      TemplateType.TELEGRAM,
+    );
+  }
+
+  /**
+   * Удаляет настройки Telegram
+   */
+  async deleteTelegramSettings(userId: string): Promise<void> {
+    await this.telegramSettingsRepository.delete({ user_id: userId });
   }
 
   /**

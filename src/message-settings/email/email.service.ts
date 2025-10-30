@@ -12,6 +12,7 @@ export class EmailService {
     to: string,
     subject: string,
     text: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     smtpConfig?: {
       host: string;
       port: number;
@@ -21,10 +22,39 @@ export class EmailService {
         pass: string;
       };
     },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    isSmtpEnabled?: boolean,
   ): Promise<void> {
     this.logger.log(`Отправка email на ${to} с темой: ${subject}`);
 
     try {
+      // ====== ВРЕМЕННО: Тестирование с debugmail.io ======
+      // TODO: После тестирования раскомментировать основной код ниже и удалить eslint-disable
+
+      this.logger.log('Отправка через debugmail.io для тестирования...');
+
+      const debugMailTransporter = nodemailer.createTransport({
+        host: 'app.debugmail.io',
+        port: 25,
+        auth: {
+          user: '3e8cc11b-0f66-4ac1-a734-8a9a25846165',
+          pass: '29b9d738-6aec-48d7-969d-de2f8fed74eb',
+        },
+      });
+
+      const mailOptions = {
+        from: 'test@example.com',
+        to,
+        subject,
+        text,
+        html: text.replace(/\n/g, '<br>'),
+      };
+
+      const info = await debugMailTransporter.sendMail(mailOptions);
+      this.logger.log(`Email успешно отправлен: ${info.messageId}`);
+
+      // ====== ОСНОВНОЙ КОД (закомментирован на время теста) ======
+      /*
       let transporter: nodemailer.Transporter;
       let fromAddress: string;
 
@@ -32,9 +62,19 @@ export class EmailService {
       const user = smtpConfig?.auth?.user || process.env.SMTP_USER || '';
       const pass = smtpConfig?.auth?.pass || process.env.SMTP_PASS || '';
 
+      // Проверяем валидность credentials (не пустые строки и не только пробелы)
+      const hasValidCredentials =
+        user && user.trim().length > 0 && pass && pass.trim().length > 0;
+
       // Проверяем, нужно ли использовать sendmail (аналог PHP mail())
+      // Используем sendmail если:
+      // 1. Явно указано USE_SENDMAIL=true
+      // 2. isSmtpEnabled === false (пользователь отключил SMTP)
+      // 3. Нет валидных credentials
       const useSendmail =
-        process.env.USE_SENDMAIL === 'true' || (!user && !pass);
+        process.env.USE_SENDMAIL === 'true' ||
+        isSmtpEnabled === false ||
+        !hasValidCredentials;
 
       if (useSendmail) {
         // Используем sendmail транспорт (аналог PHP mail())
@@ -86,8 +126,8 @@ export class EmailService {
 
       // Отправляем письмо
       const info = await transporter.sendMail(mailOptions);
-
       this.logger.log(`Email успешно отправлен: ${info.messageId}`);
+      */
     } catch (error) {
       this.logger.error(`Ошибка при отправке email: ${error.message}`);
       throw error;

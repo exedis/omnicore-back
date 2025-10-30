@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { EmailSettings } from './email-settings.entity';
+import { TemplateType } from '@type/settings';
+import { MessageTemplateService } from 'src/message-template/message-template.service';
 
 @Injectable()
 export class EmailSettingsService {
@@ -11,6 +13,7 @@ export class EmailSettingsService {
   constructor(
     @InjectRepository(EmailSettings)
     private emailSettingsRepository: Repository<EmailSettings>,
+    private messageTemplateService: MessageTemplateService,
   ) {}
 
   /**
@@ -25,16 +28,16 @@ export class EmailSettingsService {
   /**
    * Включает email
    */
-  async enableEmail(userId: string): Promise<void> {
-    await this.upsertEmailSettings(userId, { isEnabled: true });
-  }
+  // async enableEmail(userId: string): Promise<void> {
+  //   await this.upsertEmailSettings(userId, { isEnabled: true });
+  // }
 
-  /**
-   * Отключает email
-   */
-  async disableEmail(userId: string): Promise<void> {
-    await this.upsertEmailSettings(userId, { isEnabled: false });
-  }
+  // /**
+  //  * Отключает email
+  //  */
+  // async disableEmail(userId: string): Promise<void> {
+  //   await this.upsertEmailSettings(userId, { isEnabled: false });
+  // }
 
   /**
    * Обновляет настройки email
@@ -49,15 +52,26 @@ export class EmailSettingsService {
       smtpPort?: string;
       smtpUsername?: string;
       smtpPassword?: string;
+      messageTemplate?: string;
     },
   ): Promise<void> {
+    // Проверяем, заполнены ли SMTP настройки
+    const hasSmtpSettings =
+      settings.smtpHost || settings.smtpUsername || settings.smtpPassword;
+
     // Преобразуем данные в формат EmailSettings
-    const emailSettings = {
-      isEnabled: settings.isEnabled ?? false,
+    const emailSettings: any = {
+      isEnabled: settings.isEnabled,
+      isSmtpEnabled: settings.isSmtpEnabled ?? false,
       emailAddresses: settings.emailAddresses
         ? settings.emailAddresses.split(',').map((address) => address.trim())
         : [],
-      smtpSettings: {
+    };
+
+    // Добавляем SMTP настройки только если SMTP включен и они указаны
+    // Иначе оставляем null, чтобы использовать sendmail
+    if (settings.isSmtpEnabled && hasSmtpSettings) {
+      emailSettings.smtpSettings = {
         host: settings.smtpHost || '',
         port: parseInt(settings.smtpPort || '587'),
         secure: false,
@@ -65,10 +79,18 @@ export class EmailSettingsService {
           user: settings.smtpUsername || '',
           pass: settings.smtpPassword || '',
         },
-      },
-    };
+      };
+    } else {
+      emailSettings.smtpSettings = null;
+    }
 
     await this.upsertEmailSettings(userId, emailSettings);
+    await this.messageTemplateService.updateTemplate(
+      userId,
+      settings.messageTemplate,
+      settings.isEnabled,
+      TemplateType.EMAIL,
+    );
   }
 
   /**

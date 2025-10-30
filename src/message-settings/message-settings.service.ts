@@ -3,10 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TelegramSettings } from './telegram/telegram-settings.entity';
 import { EmailSettings } from './email/email-settings.entity';
-import {
-  MessageTemplate,
-  TemplateType,
-} from '../message-template/message-template.entity';
+import { MessageTemplate } from '../message-template/message-template.entity';
+import { TemplateType } from '@type/settings';
 
 @Injectable()
 export class MessageSettingsService {
@@ -32,6 +30,16 @@ export class MessageSettingsService {
     emailSettings: {
       isEnabled: boolean;
       emailAddresses: string[];
+      isSmtpEnabled: boolean;
+      smtpSettings: {
+        host: string;
+        port: number;
+        secure: boolean;
+        auth: {
+          user: string;
+          pass: string;
+        };
+      };
     };
   }> {
     const telegramSettings = await this.telegramSettings.findOne({
@@ -40,11 +48,8 @@ export class MessageSettingsService {
     });
     const emailSettings = await this.emailSettings.findOne({
       where: { user_id: userId },
-      select: ['isEnabled', 'emailAddresses'],
+      select: ['isEnabled', 'emailAddresses', 'isSmtpEnabled', 'smtpSettings'],
     });
-
-    console.log('settings', userId, telegramSettings);
-    console.log('emailSettings', userId, emailSettings);
 
     return {
       telegramSettings: {
@@ -54,6 +59,8 @@ export class MessageSettingsService {
       emailSettings: {
         isEnabled: emailSettings?.isEnabled,
         emailAddresses: emailSettings?.emailAddresses,
+        isSmtpEnabled: emailSettings?.isSmtpEnabled,
+        smtpSettings: emailSettings?.smtpSettings,
       },
     };
   }

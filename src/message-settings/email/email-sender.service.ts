@@ -40,6 +40,7 @@ export class EmailSenderService {
         subject,
         messageText,
         settings.smtpSettings,
+        settings.isSmtpEnabled,
       );
 
       this.logger.log(

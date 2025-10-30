@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Delete } from '@nestjs/common';
 import { UserId } from '../common/decorators/user-id.decorator';
 import { AuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MessageSettingsService } from './message-settings.service';
@@ -30,14 +30,9 @@ export class MessageSettingsController {
     return this.telegramSettingsService.getTelegramSettings(userId);
   }
 
-  @Post('/telegram/enable')
-  async enableTelegram(@UserId() userId: string) {
-    return this.telegramSettingsService.enableTelegram(userId);
-  }
-
-  @Post('/telegram/disable')
-  async disableTelegram(@UserId() userId: string) {
-    return this.telegramSettingsService.disableTelegram(userId);
+  @Delete('/telegram')
+  async deleteTelegramSettings(@UserId() userId: string) {
+    return this.telegramSettingsService.deleteTelegramSettings(userId);
   }
 
   @Post('/telegram/update')
@@ -56,16 +51,6 @@ export class MessageSettingsController {
   @Get('/email')
   async getEmailSettings(@UserId() userId: string) {
     return this.emailSettingsService.getEmailSettings(userId);
-  }
-
-  @Post('/email/enable')
-  async enableEmail(@UserId() userId: string) {
-    return this.emailSettingsService.enableEmail(userId);
-  }
-
-  @Post('/email/disable')
-  async disableEmail(@UserId() userId: string) {
-    return this.emailSettingsService.disableEmail(userId);
   }
 
   @Post('/email/update')

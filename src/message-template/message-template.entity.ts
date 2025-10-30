@@ -8,15 +8,9 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { User } from '../auth/user.entity';
+import { TemplateType } from '@type/settings';
 
-export enum TemplateType {
-  TELEGRAM = 'telegram',
-  WHATSAPP = 'whatsapp',
-  EMAIL = 'email',
-  SMS = 'sms',
-}
-
-const defaultTemplate = `Заявка,\n Имя: {{name}}; \n Телефон:{{phone}}`;
+const defaultTemplate = `Заявка,\nИмя: {{name}};\nТелефон: {{phone}};\nEmail: {{email}};\nСообщение: {{message}}`;
 
 @Entity('message_templates')
 export class MessageTemplate {

@@ -1,17 +1,22 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Observable, Subject } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
 import { Webhook } from './webhook.entity';
 import { CreateWebhookDto, WebhookQueryDto } from './dto/webhook.dto';
 import { MessageFieldsService } from 'src/message-fields/message-fields.service';
 import { MessageSettingsService } from 'src/message-settings/message-settings.service';
 import { TelegramSenderService } from 'src/message-settings/telegram/telegram-sender.service';
 import { EmailSenderService } from 'src/message-settings/email/email-sender.service';
+import { WebhookDeduplicationService } from './webhook-deduplication.service';
+import { WebhookJobData } from './webhook.processor';
 
 @Injectable()
 export class WebhookService {
+  private readonly logger = new Logger(WebhookService.name);
   private webhookEvents = new Map<string, Subject<any>>();
 
   constructor(
@@ -21,8 +26,72 @@ export class WebhookService {
     private messageSettingsService: MessageSettingsService,
     private telegramSenderService: TelegramSenderService,
     private emailSenderService: EmailSenderService,
+    @InjectQueue('webhooks') private webhookQueue: Queue,
+    private deduplicationService: WebhookDeduplicationService,
   ) {}
 
+  /**
+   * Добавляет webhook в очередь для обработки
+   * @param createWebhookDto - данные webhook
+   * @param userId - ID пользователя
+   * @returns статус добавления в очередь
+   */
+  async addToQueue(
+    createWebhookDto: CreateWebhookDto,
+    userId: string,
+  ): Promise<{ status: string; message: string; jobId?: string | number }> {
+    // Проверяем на дубликаты
+    const duplicateCheck = this.deduplicationService.checkDuplicate(
+      createWebhookDto,
+      userId,
+    );
+
+    if (duplicateCheck.isDuplicate) {
+      this.logger.warn(
+        `Duplicate webhook rejected for user ${userId}. Hash: ${duplicateCheck.hash.substring(
+          0,
+          10,
+        )}...`,
+      );
+      return {
+        status: 'rejected',
+        message: 'Duplicate webhook detected within deduplication window',
+      };
+    }
+
+    // Добавляем в очередь
+    const job = await this.webhookQueue.add(
+      'process-webhook',
+      {
+        webhookDto: createWebhookDto,
+        userId,
+      } as WebhookJobData,
+      {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    );
+
+    this.logger.log(
+      `Webhook added to queue for user ${userId}, job ID: ${job.id}`,
+    );
+
+    return {
+      status: 'queued',
+      message: 'Webhook queued for processing',
+      jobId: job.id,
+    };
+  }
+
+  /**
+   * Создает webhook напрямую (для совместимости или отладки)
+   * @deprecated Используйте addToQueue для асинхронной обработки
+   */
   async create(
     createWebhookDto: CreateWebhookDto,
     userId: string,

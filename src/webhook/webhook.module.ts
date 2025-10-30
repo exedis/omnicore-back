@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bull';
 import { Webhook } from './webhook.entity';
 import { WebhookService } from './webhook.service';
 import { WebhookController } from './webhook.controller';
 import { PublicWebhookController } from './public-webhook.controller';
+import { WebhookProcessor } from './webhook.processor';
+import { WebhookDeduplicationService } from './webhook-deduplication.service';
 import { ApiKeyModule } from '../api-key/api-key.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -13,6 +16,18 @@ import { MessageSettingsModule } from 'src/message-settings/message-settings.mod
 @Module({
   imports: [
     TypeOrmModule.forFeature([Webhook]),
+    BullModule.registerQueue({
+      name: 'webhooks',
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+        removeOnComplete: 100, // Хранить последние 100 завершенных задач
+        removeOnFail: false, // Не удалять неудачные задачи для анализа
+      },
+    }),
     ApiKeyModule,
     MessageFieldsModule,
     MessageSettingsModule,
@@ -26,7 +41,7 @@ import { MessageSettingsModule } from 'src/message-settings/message-settings.mod
     }),
   ],
   controllers: [WebhookController, PublicWebhookController],
-  providers: [WebhookService],
+  providers: [WebhookService, WebhookProcessor, WebhookDeduplicationService],
   exports: [WebhookService],
 })
 export class WebhookModule {}

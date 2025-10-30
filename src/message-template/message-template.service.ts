@@ -1,9 +1,11 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { MessageTemplate, TemplateType } from './message-template.entity';
-import { Webhook } from 'src/webhook/webhook.entity';
+import { MessageTemplate } from './message-template.entity';
 import { MessageFieldsService } from 'src/message-fields/message-fields.service';
+import { TelegramSettings } from 'src/message-settings/telegram/telegram-settings.entity';
+import { EmailSettings } from 'src/message-settings/email/email-settings.entity';
+import { TemplateType } from '@type/settings';
 
 @Injectable()
 export class MessageTemplateService {
@@ -13,6 +15,10 @@ export class MessageTemplateService {
     private readonly messageFieldsService: MessageFieldsService,
     @InjectRepository(MessageTemplate)
     private messageTemplateRepository: Repository<MessageTemplate>,
+    @InjectRepository(TelegramSettings)
+    private telegramSettingsRepository: Repository<TelegramSettings>,
+    @InjectRepository(EmailSettings)
+    private emailSettingsRepository: Repository<EmailSettings>,
   ) {}
 
   /**
@@ -22,7 +28,6 @@ export class MessageTemplateService {
     userId: string,
     templateData: {
       name: string;
-      type: TemplateType;
       template: string;
     },
   ): Promise<MessageTemplate> {
@@ -34,10 +39,8 @@ export class MessageTemplateService {
 
     // Создаем entity напрямую
     const template = new MessageTemplate();
-    template.type = templateData.type;
     template.messageTemplate = templateData.template || '';
     template.user_id = userId;
-
     const savedTemplate = await this.messageTemplateRepository.save(template);
 
     return savedTemplate;
@@ -46,14 +49,8 @@ export class MessageTemplateService {
   /**
    * Получает все шаблоны пользователя
    */
-  async getUserTemplates(
-    userId: string,
-    type?: TemplateType,
-  ): Promise<MessageTemplate[]> {
-    const where: any = { user_id: userId, isActive: true };
-    if (type) {
-      where.type = type;
-    }
+  async getUserTemplates(userId: string): Promise<MessageTemplate[]> {
+    const where = { user_id: userId };
 
     return this.messageTemplateRepository.find({
       where,
@@ -91,12 +88,27 @@ export class MessageTemplateService {
    */
   async updateTemplate(
     userId: string,
-    type: TemplateType,
     messageTemplate: string,
+    isEnabled: boolean,
+    type: TemplateType,
   ): Promise<void> {
     const templateData = await this.messageTemplateRepository.findOne({
-      where: { type: type, user_id: userId },
+      where: { user_id: userId, type: type },
     });
+
+    if (type === TemplateType.TELEGRAM) {
+      const settings = await this.telegramSettingsRepository.findOne({
+        where: { user_id: userId },
+      });
+      settings.isEnabled = isEnabled;
+      await this.telegramSettingsRepository.save(settings);
+    } else if (type === TemplateType.EMAIL) {
+      const settings = await this.emailSettingsRepository.findOne({
+        where: { user_id: userId },
+      });
+      settings.isEnabled = isEnabled;
+      await this.emailSettingsRepository.save(settings);
+    }
 
     if (!templateData) {
       throw new NotFoundException('Шаблон не найден');
@@ -110,75 +122,56 @@ export class MessageTemplateService {
   }
 
   /**
-   * Получает шаблон по умолчанию для типа платформы
-   */
-  async getDefaultTemplate(
-    userId: string,
-    type: TemplateType,
-  ): Promise<MessageTemplate | null> {
-    return this.messageTemplateRepository.findOne({
-      where: {
-        user_id: userId,
-        type,
-      },
-    });
-  }
-
-  /**
    * Форматирует сообщение по шаблону
    */
-  async formatMessage(
-    userId: string,
-    type: TemplateType,
-    webhook: Webhook,
-  ): Promise<string> {
-    // Получаем шаблон по умолчанию или первый доступный
-    let template = await this.getDefaultTemplate(userId, type);
+  // async formatMessage(
+  //   userId: string,
+  //   type: TemplateType,
+  //   webhook: Webhook,
+  // ): Promise<string> {
 
-    if (!template) {
-      const templates = await this.getUserTemplates(userId, type);
-      template = templates[0];
-    }
+  //     const templates = await this.getUserTemplates(userId, type);
+  //     template = templates[0];
 
-    if (!template) {
-      // Fallback к стандартному форматированию
-      return this.getDefaultMessageFormat(webhook);
-    }
-    return this.replaceTemplateVariables(template.messageTemplate, webhook);
-  }
+  //   if (!template) {
+  //     // Fallback к стандартному форматированию
+  //     return this.getDefaultMessageFormat(webhook);
+  //   }
+  //   return this.replaceTemplateVariables(template.messageTemplate, webhook);
+  // }
 
   /* функция замены переменных в шаблоне */
-  private replaceTemplateVariables(template, data) {
-    return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
-      // Убираем пробелы вокруг ключа
-      const cleanKey = key.trim();
+  // private replaceTemplateVariables(template, data) {
+  //   return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
+  //     // Убираем пробелы вокруг ключа
+  //     const cleanKey = key.trim();
 
-      // Разбиваем ключ по точкам для вложенных объектов
-      const keys = cleanKey.split('.');
+  //     // Разбиваем ключ по точкам для вложенных объектов
+  //     const keys = cleanKey.split('.');
 
-      // Рекурсивно получаем значение из объекта
-      let value = data;
-      for (const k of keys) {
-        if (value && typeof value === 'object' && k in value) {
-          value = value[k];
-        } else {
-          // Если ключ не найден, возвращаем оригинальный placeholder
-          return match;
-        }
-      }
+  //     // Рекурсивно получаем значение из объекта
+  //     let value = data;
+  //     for (const k of keys) {
+  //       if (value && typeof value === 'object' && k in value) {
+  //         value = value[k];
+  //       } else {
+  //         // Если ключ не найден, возвращаем оригинальный placeholder
+  //         return match;
+  //       }
+  //     }
 
-      // Если значение undefined, null или объект - возвращаем пустую строку
-      if (
-        value === null ||
-        value === undefined ||
-        (typeof value === 'object' && !Array.isArray(value))
-      ) {
-        return '';
-      }
+  //     // Если значение undefined, null или объект - возвращаем пустую строку
+  //     if (
+  //       value === null ||
+  //       value === undefined ||
+  //       (typeof value === 'object' && !Array.isArray(value))
+  //     ) {
+  //       return '';
+  //     }
 
-      return String(value);
-    });
-  }
+  //     return String(value);
+  //   });
+  // }
 
   // Функция для получения вложенных значений из объекта
   // private getNestedValue(obj, path) {

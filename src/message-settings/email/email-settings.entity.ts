@@ -23,6 +23,9 @@ export class EmailSettings {
   @Column({ type: 'jsonb', nullable: true })
   emailAddresses: string[];
 
+  @Column({ default: false })
+  isSmtpEnabled: boolean;
+
   @Column({ type: 'jsonb', nullable: true })
   smtpSettings: {
     host: string;

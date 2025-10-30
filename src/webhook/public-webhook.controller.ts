@@ -36,13 +36,10 @@ export class PublicWebhookController {
       },
     };
 
-    // Создаем вебхук для пользователя, которому принадлежит API ключ
-    const webhook = await this.webhookService.create(webhookData, userId);
+    // Добавляем вебхук в очередь для асинхронной обработки
+    const result = await this.webhookService.addToQueue(webhookData, userId);
 
-    // Отправляем уведомление через SSE
-    this.webhookService.notifyNewWebhook(userId, webhook);
-
-    return webhook;
+    return result;
   }
 
   @Get('events')

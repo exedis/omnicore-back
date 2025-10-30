@@ -3,7 +3,7 @@ import { AuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UserId } from '../common/decorators/user-id.decorator';
 import { MessageTemplateService } from './message-template.service';
 import { UpdateTemplateDto } from './dto/update-template.dto';
-import { TemplateType } from './message-template.entity';
+import { TemplateType } from '@type/settings';
 
 @Controller('message-templates')
 @UseGuards(AuthGuard)
@@ -15,18 +15,19 @@ export class MessageTemplateController {
   /**
    * Обновляем шаблон по типу
    */
-  @Patch(':type')
-  async getTemplateById(
-    @UserId() userId: string,
-    @Param('type') type: TemplateType,
-    @Body() data: UpdateTemplateDto,
-  ) {
-    return await this.messageTemplateService.updateTemplate(
-      userId,
-      type,
-      data.messageTemplate,
-    );
-  }
+  // @Patch(':type')
+  // async getTemplateById(
+  //   @UserId() userId: string,
+  //   @Param('type') type: TemplateType,
+  //   @Body() data: UpdateTemplateDto,
+  // ) {
+  //   return await this.messageTemplateService.updateTemplate(
+  //     userId,
+  //     data.messageTemplate,
+  //     data.isEnabled,
+  //     type,
+  //   );
+  // }
 
   /**
    * Получает шаблон по id
