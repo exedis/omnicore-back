@@ -1,9 +1,17 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsBoolean,
+  IsUUID,
+} from 'class-validator';
 
 export class CreateApiKeyDto {
   @IsString()
   @IsNotEmpty()
   name: string;
+
+  // board_id создается автоматически вместе с доской
 }
 
 export class UpdateApiKeyDto {
@@ -14,6 +22,8 @@ export class UpdateApiKeyDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  // board_id нельзя изменить после создания
 }
 
 export class ApiKeyResponseDto {

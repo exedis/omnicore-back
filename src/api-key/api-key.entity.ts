@@ -8,6 +8,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { User } from '../auth/user.entity';
+import { Board } from '../board/board.entity';
 
 @Entity('api_keys')
 export class ApiKey {
@@ -32,9 +33,16 @@ export class ApiKey {
   @Column()
   user_id: string; // Связь с пользователем
 
+  @Column({ nullable: true })
+  board_id: string; // Доска для автоматического создания задач
+
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user: User;
+
+  @ManyToOne(() => Board, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'board_id' })
+  board: Board;
 
   @CreateDateColumn()
   createdAt: Date;

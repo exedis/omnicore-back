@@ -1,12 +1,14 @@
 import {
   Injectable,
   NotFoundException,
-  ConflictException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApiKey } from './api-key.entity';
 import { CreateApiKeyDto, UpdateApiKeyDto } from './dto/api-key.dto';
+import { BoardService } from '../board/board.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -14,6 +16,8 @@ export class ApiKeyService {
   constructor(
     @InjectRepository(ApiKey)
     private apiKeyRepository: Repository<ApiKey>,
+    @Inject(forwardRef(() => BoardService))
+    private boardService: BoardService,
   ) {}
 
   async create(
@@ -23,10 +27,20 @@ export class ApiKeyService {
     // Генерируем уникальный API ключ
     const key = `ak_${crypto.randomBytes(32).toString('hex')}`;
 
+    // Создаем доску с именем ключа
+    const board = await this.boardService.create(
+      {
+        name: createApiKeyDto.name,
+        description: `Board for "${createApiKeyDto.name}"`,
+      },
+      userId,
+    );
+
     const apiKey = this.apiKeyRepository.create({
       ...createApiKeyDto,
       key,
       user_id: userId,
+      board_id: board.id,
     });
 
     return this.apiKeyRepository.save(apiKey);
@@ -36,12 +50,14 @@ export class ApiKeyService {
     return this.apiKeyRepository.find({
       where: { user_id: userId },
       order: { createdAt: 'DESC' },
+      relations: ['board'],
     });
   }
 
   async findOne(id: string, userId: string): Promise<ApiKey> {
     const apiKey = await this.apiKeyRepository.findOne({
       where: { id, user_id: userId },
+      relations: ['board'],
     });
 
     if (!apiKey) {
@@ -71,6 +87,18 @@ export class ApiKeyService {
   }
 
   async delete(id: string, userId: string): Promise<void> {
+    const apiKey = await this.findOne(id, userId);
+
+    // Удаляем связанную доску (CASCADE удалит задачи и колонки)
+    if (apiKey.board_id) {
+      try {
+        await this.boardService.remove(apiKey.board_id, userId);
+      } catch (error) {
+        // Доска может быть уже удалена, игнорируем ошибку
+        console.error('Ошибка при удалении доски:', error.message);
+      }
+    }
+
     const result = await this.apiKeyRepository.delete({
       id,
       user_id: userId,

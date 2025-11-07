@@ -6,6 +6,8 @@ import { UpdateTelegramSettingsDto } from './dto/update-telegram-settings.dto';
 import { UpdateEmailSettingsDto } from './dto/update-email-settings.dto';
 import { EmailSettingsService } from './email/email-settings.service';
 import { TelegramSettingsService } from './telegram/telegram-settings.service';
+import { TaskSettingsService } from './task/task-settings.service';
+import { UpdateTaskSettingsDto } from './dto/update-task-settings.dto';
 
 @Controller('message-settings')
 @UseGuards(AuthGuard)
@@ -14,6 +16,7 @@ export class MessageSettingsController {
     private readonly messageSettingsService: MessageSettingsService,
     private readonly emailSettingsService: EmailSettingsService,
     private readonly telegramSettingsService: TelegramSettingsService,
+    private readonly taskSettingsService: TaskSettingsService,
   ) {}
 
   // ==================== Общие настройки ====================
@@ -59,5 +62,15 @@ export class MessageSettingsController {
     @Body() settings: UpdateEmailSettingsDto,
   ) {
     return this.emailSettingsService.updateEmailSettings(userId, settings);
+  }
+
+  // ==================== Task настройки ====================
+
+  @Post('/task/update')
+  async updateTaskSettings(
+    @UserId() userId: string,
+    @Body() settings: UpdateTaskSettingsDto,
+  ) {
+    return this.taskSettingsService.updateTaskSettings(userId, settings);
   }
 }

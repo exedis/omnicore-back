@@ -52,7 +52,6 @@ export class TelegramSettingsService {
     await this.messageTemplateService.updateTemplate(
       userId,
       settings.messageTemplate,
-      settings.isEnabled,
       TemplateType.TELEGRAM,
     );
   }

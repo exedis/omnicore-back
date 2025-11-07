@@ -89,7 +89,6 @@ export class MessageTemplateService {
   async updateTemplate(
     userId: string,
     messageTemplate: string,
-    isEnabled: boolean,
     type: TemplateType,
   ): Promise<void> {
     const templateData = await this.messageTemplateRepository.findOne({
@@ -100,13 +99,11 @@ export class MessageTemplateService {
       const settings = await this.telegramSettingsRepository.findOne({
         where: { user_id: userId },
       });
-      settings.isEnabled = isEnabled;
       await this.telegramSettingsRepository.save(settings);
     } else if (type === TemplateType.EMAIL) {
       const settings = await this.emailSettingsRepository.findOne({
         where: { user_id: userId },
       });
-      settings.isEnabled = isEnabled;
       await this.emailSettingsRepository.save(settings);
     }
 
@@ -195,6 +192,18 @@ export class MessageTemplateService {
 
   //   return current;
   // }
+
+  /**
+   * Получить шаблон по типу
+   */
+  async getTemplateByType(
+    userId: string,
+    type: TemplateType,
+  ): Promise<MessageTemplate | null> {
+    return this.messageTemplateRepository.findOne({
+      where: { user_id: userId, type: type },
+    });
+  }
 
   /**
    * Стандартный формат сообщения (fallback)

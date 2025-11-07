@@ -8,14 +8,16 @@ import { PublicWebhookController } from './public-webhook.controller';
 import { WebhookProcessor } from './webhook.processor';
 import { WebhookDeduplicationService } from './webhook-deduplication.service';
 import { ApiKeyModule } from '../api-key/api-key.module';
+import { ApiKey } from '../api-key/api-key.entity';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { MessageFieldsModule } from 'src/message-fields/message-fields.module';
 import { MessageSettingsModule } from 'src/message-settings/message-settings.module';
+import { TaskModule } from 'src/task/task.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Webhook]),
+    TypeOrmModule.forFeature([Webhook, ApiKey]),
     BullModule.registerQueue({
       name: 'webhooks',
       defaultJobOptions: {
@@ -31,6 +33,7 @@ import { MessageSettingsModule } from 'src/message-settings/message-settings.mod
     ApiKeyModule,
     MessageFieldsModule,
     MessageSettingsModule,
+    TaskModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

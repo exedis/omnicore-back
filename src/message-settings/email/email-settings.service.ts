@@ -88,7 +88,6 @@ export class EmailSettingsService {
     await this.messageTemplateService.updateTemplate(
       userId,
       settings.messageTemplate,
-      settings.isEnabled,
       TemplateType.EMAIL,
     );
   }

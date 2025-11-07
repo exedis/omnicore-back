@@ -16,6 +16,7 @@ import { EmailSettingsService } from './email/email-settings.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TelegramSettingsService } from './telegram/telegram-settings.service';
 import { MessageTemplate } from '../message-template/message-template.entity';
+import { TaskSettingsService } from './task/task-settings.service';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { MessageTemplate } from '../message-template/message-template.entity';
     EmailService,
     EmailSettingsService,
     TelegramSettingsService,
+    TaskSettingsService,
   ],
   exports: [
     MessageSettingsService,
