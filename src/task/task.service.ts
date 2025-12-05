@@ -5,13 +5,16 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Task } from './task.entity';
+import { Task, TaskStatus } from './task.entity';
 import { CreateTaskDto, UpdateTaskDto, TaskQueryDto } from './dto/task.dto';
 import { BoardService } from '../board/board.service';
 import { BoardColumn } from '../board/board-column.entity';
 import { Webhook } from '../webhook/webhook.entity';
 import { MessageTemplateService } from '../message-template/message-template.service';
 import { TemplateType } from '../types/settings';
+import { ApiKey } from '../api-key/api-key.entity';
+import { BoardMember } from '../board/board-member.entity';
+import { TaskByBoardResponsibleResponse } from '@type/task';
 
 @Injectable()
 export class TaskService {
@@ -20,6 +23,10 @@ export class TaskService {
     private taskRepository: Repository<Task>,
     @InjectRepository(BoardColumn)
     private boardColumnRepository: Repository<BoardColumn>,
+    @InjectRepository(BoardMember)
+    private boardMemberRepository: Repository<BoardMember>,
+    @InjectRepository(ApiKey)
+    private apiKeyRepository: Repository<ApiKey>,
     private boardService: BoardService,
     private messageTemplateService: MessageTemplateService,
   ) {}
@@ -31,12 +38,45 @@ export class TaskService {
     // Проверяем доступ к доске
     await this.boardService.findOne(createTaskDto.boardId, userId);
 
+    const responsibleId = createTaskDto.responsibleId;
+
+    // Если ответственный указан явно - проверяем что он участник доски
+    if (responsibleId) {
+      const hasAccess = await this.boardService.checkAccess(
+        createTaskDto.boardId,
+        responsibleId,
+      );
+      if (!hasAccess) {
+        throw new ForbiddenException('Назначить можно только участника доски');
+      }
+    }
+
     const task = this.taskRepository.create({
       ...createTaskDto,
       board_id: createTaskDto.boardId,
-      api_key_id: createTaskDto.apiKeyId,
+      column_id: createTaskDto.columnId,
+      responsible_id: responsibleId,
     });
-    return this.taskRepository.save(task);
+
+    const savedTask = await this.taskRepository.save(task);
+
+    const savedTaskWithRelations = await this.taskRepository.findOne({
+      where: { id: savedTask.id },
+      relations: [
+        'board',
+        'column',
+        'apiKey',
+        'apiKey.user',
+        'webhook',
+        'responsible',
+      ],
+    });
+
+    if (!savedTaskWithRelations) {
+      throw new NotFoundException('Задача не найдена после создания');
+    }
+
+    return savedTaskWithRelations;
   }
 
   /**
@@ -70,11 +110,6 @@ export class TaskService {
       board_id: boardId,
       column_id: firstColumn?.id,
       webhook_id: webhook.id,
-      metadata: {
-        siteName: webhook.siteName,
-        formName: webhook.formName,
-        webhookData: webhook.data,
-      },
     });
 
     return this.taskRepository.save(task);
@@ -84,29 +119,21 @@ export class TaskService {
    * Получить все задачи с фильтрацией
    */
   async findAll(query: TaskQueryDto, userId: string) {
-    const {
-      boardId,
-      apiKeyId,
-      status,
-      priority,
-      page = '1',
-      limit = '20',
-    } = query;
+    const { boardId, status, priority, page = '1', limit = '20' } = query;
 
     const queryBuilder = this.taskRepository
       .createQueryBuilder('task')
       .leftJoinAndSelect('task.board', 'board')
       .leftJoinAndSelect('task.apiKey', 'apiKey')
+      .leftJoinAndSelect('task.column', 'column')
+      .leftJoinAndSelect('task.responsible', 'responsible')
+      .leftJoinAndSelect('apiKey.user', 'apiKeyUser')
       .leftJoinAndSelect('task.webhook', 'webhook')
       .leftJoin('board.members', 'member')
       .where('member.user_id = :userId', { userId });
 
     if (boardId) {
       queryBuilder.andWhere('task.board_id = :board_id', { boardId });
-    }
-
-    if (apiKeyId) {
-      queryBuilder.andWhere('task.api_key_id = :api_key_id', { apiKeyId });
     }
 
     if (status) {
@@ -142,7 +169,7 @@ export class TaskService {
   async findOne(taskId: string, userId: string): Promise<Task> {
     const task = await this.taskRepository.findOne({
       where: { id: taskId },
-      relations: ['board', 'apiKey', 'webhook'],
+      // relations: ['board', 'webhook', 'responsible', 'column'],
     });
 
     if (!task) {
@@ -170,17 +197,84 @@ export class TaskService {
     userId: string,
   ): Promise<Task> {
     const task = await this.findOne(taskId, userId);
+    // Если меняется ответственный - проверяем что он является участником доски
+    // if (updateTaskDto.responsibleId !== undefined) {
+    //   if (updateTaskDto.responsibleId !== null) {
+    //     const hasAccess = await this.boardService.checkAccess(
+    //       task.board_id,
+    //       updateTaskDto.responsibleId,
+    //     );
+    //     if (!hasAccess) {
+    //       throw new ForbiddenException(
+    //         'Назначить можно только участника доски',
+    //       );
+    //     }
+    //   }
+    // }
 
-    return this.taskRepository.save({
+    // Собираем обновления явно, чтобы не перезаписывать поля, которые не были переданы
+    const updatedTask: Partial<Task> = {
       ...task,
-      ...updateTaskDto,
-      column_id: updateTaskDto.columnId,
-      priority: updateTaskDto.priority,
-      status: updateTaskDto.status,
-      title: updateTaskDto.title,
-      description: updateTaskDto.description,
-      metadata: updateTaskDto.metadata,
-    });
+    };
+
+    // Обновляем только те поля, которые явно переданы в DTO
+    if (updateTaskDto.columnId !== undefined) {
+      const newColumnId =
+        updateTaskDto.columnId === '' ? null : updateTaskDto.columnId;
+
+      // Проверяем, является ли новая колонка последней в доске
+      if (newColumnId) {
+        const allColumns = await this.boardColumnRepository.find({
+          where: { board_id: task.board_id },
+          order: { position: 'ASC' },
+        });
+
+        if (allColumns.length > 0) {
+          const lastColumn = allColumns[allColumns.length - 1];
+
+          // Если задача перемещается в последнюю колонку
+          if (newColumnId === lastColumn.id) {
+            updatedTask.column_id = null; // Убираем с доски
+            updatedTask.status = TaskStatus.DONE; // Устанавливаем статус DONE
+          } else {
+            updatedTask.column_id = newColumnId;
+          }
+        } else {
+          updatedTask.column_id = newColumnId;
+        }
+      } else {
+        updatedTask.column_id = null;
+      }
+    }
+
+    if (updateTaskDto.responsibleId !== undefined) {
+      updatedTask.responsible_id =
+        updateTaskDto.responsibleId === '' ? null : updateTaskDto.responsibleId;
+    }
+
+    if (updateTaskDto.priority !== undefined) {
+      updatedTask.priority = updateTaskDto.priority;
+    }
+
+    if (updateTaskDto.status !== undefined) {
+      updatedTask.status = updateTaskDto.status;
+    }
+
+    if (updateTaskDto.title !== undefined) {
+      updatedTask.title = updateTaskDto.title;
+    }
+
+    if (updateTaskDto.description !== undefined) {
+      updatedTask.description = updateTaskDto.description;
+    }
+
+    if (updateTaskDto.position !== undefined) {
+      updatedTask.position = updateTaskDto.position;
+    }
+
+    return this.taskRepository.save(updatedTask);
+
+    // return this.findOne(taskId, userId);
   }
 
   /**
@@ -194,40 +288,119 @@ export class TaskService {
   /**
    * Получить задачи по доске
    */
-  async findByBoard(boardId: string, userId: string): Promise<Task[]> {
-    // Проверяем доступ к доске
-    await this.boardService.findOne(boardId, userId);
-
-    return this.taskRepository.find({
-      where: { board_id: boardId },
-      relations: ['apiKey', 'webhook'],
-      order: { createdAt: 'DESC' },
+  async findByBoard(
+    boardId: string,
+    userId: string,
+  ): Promise<TaskByBoardResponsibleResponse[]> {
+    //TODO: Добавить нормальную проверку доступа к доске
+    const memberships = await this.boardMemberRepository.find({
+      where: { user_id: userId },
+      select: ['board_id'],
     });
+
+    const accessibleBoardIds = new Set(memberships.map((m) => m.board_id));
+
+    if (!accessibleBoardIds.has(boardId)) {
+      throw new ForbiddenException('У вас нет доступа к этой доске');
+    }
+
+    const queryBuilder = this.taskRepository
+      .createQueryBuilder('task')
+      .leftJoinAndSelect('task.responsible', 'responsible')
+      .where('task.board_id = :boardId', { boardId })
+      .orderBy('task.position', 'ASC')
+      .addOrderBy('task.createdAt', 'DESC');
+
+    const [tasks] = await queryBuilder.getManyAndCount();
+
+    const grouped = tasks.reduce<Map<string, TaskByBoardResponsibleResponse>>(
+      (acc, task) => {
+        const responsibleId = task.responsible?.id ?? '';
+        let group = acc.get(responsibleId);
+
+        if (!group) {
+          group = {
+            responsible: {
+              id: responsibleId,
+              name: task.responsible?.name ?? null,
+            },
+            tasks: [],
+            total: 0,
+          };
+          acc.set(responsibleId, group);
+        }
+
+        group.tasks.push({
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          position: task.position,
+          createdAt: task.createdAt,
+          updatedAt: task.updatedAt,
+          status: task.status,
+          priority: task.priority,
+          column_id: task.column_id,
+          responsible_id: task.responsible_id,
+        });
+
+        group.total += 1;
+
+        return acc;
+      },
+      new Map<string, TaskByBoardResponsibleResponse>(),
+    );
+
+    const tasksByResponsible = Array.from(grouped.values()).sort((a, b) => {
+      const isAUnassigned = a.responsible.id === '';
+      const isBUnassigned = b.responsible.id === '';
+
+      if (isAUnassigned && !isBUnassigned) {
+        return 1;
+      }
+
+      if (!isAUnassigned && isBUnassigned) {
+        return -1;
+      }
+
+      const nameA = a.responsible.name ?? '';
+      const nameB = b.responsible.name ?? '';
+
+      return nameA.localeCompare(nameB);
+    });
+
+    return tasksByResponsible;
   }
 
   /**
    * Получить задачи по API ключу
    */
-  async findByApiKey(apiKeyId: string, userId: string): Promise<Task[]> {
-    const tasks = await this.taskRepository.find({
-      where: { api_key_id: apiKeyId },
-      relations: ['board', 'apiKey', 'webhook'],
-    });
+  // async findByApiKey(apiKeyId: string, userId: string): Promise<Task[]> {
+  //   const tasks = await this.taskRepository.find({
+  //     where: { api_key_id: apiKeyId },
+  //     relations: [
+  //       'board',
+  //       'apiKey',
+  //       'apiKey.user',
+  //       'webhook',
+  //       'responsible',
+  //       'column',
+  //     ],
+  //   });
 
-    // Фильтруем задачи, к которым у пользователя есть доступ
-    const accessibleTasks = [];
-    for (const task of tasks) {
-      const hasAccess = await this.boardService.checkAccess(
-        task.board_id,
-        userId,
-      );
-      if (hasAccess) {
-        accessibleTasks.push(task);
-      }
-    }
+  //   // Фильтруем задачи, к которым у пользователя есть доступ
+  //   const accessibleTasks = [];
+  //   for (const task of tasks) {
+  //     const hasAccess = await this.boardService.checkAccess(
+  //       task.board_id,
+  //       userId,
+  //     );
+  //     if (hasAccess) {
+  //       accessibleTasks.push(task);
+  //     }
+  //   }
 
-    return accessibleTasks;
-  }
+  //   return accessibleTasks;
+  // }
 
   /**
    * Форматирует поле задачи через шаблон

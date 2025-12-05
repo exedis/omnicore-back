@@ -8,10 +8,12 @@ import { TaskController } from './task.controller';
 import { BoardModule } from '../board/board.module';
 import { BoardColumn } from '../board/board-column.entity';
 import { MessageTemplateModule } from '../message-template/message-template.module';
+import { ApiKey } from '../api-key/api-key.entity';
+import { BoardMember } from '../board/board-member.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Task, BoardColumn]),
+    TypeOrmModule.forFeature([Task, BoardColumn, ApiKey, BoardMember]),
     BoardModule,
     MessageTemplateModule,
     JwtModule.registerAsync({

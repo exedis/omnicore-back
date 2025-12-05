@@ -10,14 +10,15 @@ import {
 } from 'typeorm';
 import { Board } from '../board/board.entity';
 import { BoardColumn } from '../board/board-column.entity';
-import { ApiKey } from '../api-key/api-key.entity';
 import { Webhook } from '../webhook/webhook.entity';
+import { User } from '../auth/user.entity';
 
 export enum TaskStatus {
   NEW = 'new',
   IN_PROGRESS = 'in_progress',
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
+  DONE = 'done',
 }
 
 export enum TaskPriority {
@@ -59,16 +60,13 @@ export class Task {
   column_id: string;
 
   @Column({ nullable: true })
-  api_key_id: string;
+  webhook_id: string;
 
   @Column({ nullable: true })
-  webhook_id: string;
+  responsible_id: string;
 
   @Column({ type: 'int', default: 0 })
   position: number; // Позиция задачи внутри колонки
-
-  @Column({ type: 'jsonb', nullable: true })
-  metadata: Record<string, any>;
 
   @ManyToOne(() => Board, (board) => board.tasks, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'board_id' })
@@ -80,13 +78,13 @@ export class Task {
   @JoinColumn({ name: 'column_id' })
   column: BoardColumn;
 
-  @ManyToOne(() => ApiKey, { onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'api_key_id' })
-  apiKey: ApiKey;
-
   @OneToOne(() => Webhook, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'webhook_id' })
   webhook: Webhook;
+
+  @ManyToOne(() => User, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'responsible_id' })
+  responsible: User;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -9,10 +9,18 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthGuard } from './guards/jwt-auth.guard';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from './user.entity';
+import { TelegramSettings } from '../message-settings/telegram/telegram-settings.entity';
+import { EmailSettings } from '../message-settings/email/email-settings.entity';
+import { MessageTemplate } from '../message-template/message-template.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([
+      User,
+      TelegramSettings,
+      EmailSettings,
+      MessageTemplate,
+    ]),
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

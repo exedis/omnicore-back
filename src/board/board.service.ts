@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Board } from './board.entity';
 import { BoardMember, BoardRole } from './board-member.entity';
 import { BoardColumn } from './board-column.entity';
@@ -16,6 +16,7 @@ import {
   UpdateBoardDto,
   InviteMemberDto,
   RemoveMemberDto,
+  UpdateBoardWithColumnsDto,
 } from './dto/board.dto';
 import {
   CreateColumnDto,
@@ -34,6 +35,7 @@ export class BoardService {
     private boardColumnRepository: Repository<BoardColumn>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private dataSource: DataSource,
   ) {}
 
   /**
@@ -83,12 +85,15 @@ export class BoardService {
    * Получить все доски пользователя (где он участник)
    */
   async findAll(userId: string): Promise<Board[]> {
-    const memberRecords = await this.boardMemberRepository.find({
-      where: { user_id: userId },
-      relations: ['board', 'board.owner'],
-    });
-
-    return memberRecords.map((member) => member.board);
+    return this.boardRepository
+      .createQueryBuilder('board')
+      .innerJoin('board.members', 'member', 'member.user_id = :userId', {
+        userId,
+      })
+      .leftJoinAndSelect('board.columns', 'column')
+      .addOrderBy('board.createdAt', 'DESC')
+      .addOrderBy('column.position', 'ASC')
+      .getMany();
   }
 
   /**
@@ -130,6 +135,124 @@ export class BoardService {
 
     Object.assign(board, updateBoardDto);
     return this.boardRepository.save(board);
+  }
+
+  /**
+   * Универсальный метод обновления доски с колонками
+   * Позволяет: добавить/удалить/переименовать колонки, изменить порядок
+   */
+  async updateBoardWithColumns(
+    boardId: string,
+    updateDto: UpdateBoardWithColumnsDto,
+    userId: string,
+  ): Promise<Board> {
+    const board = await this.findOne(boardId, userId);
+    // Только владелец может обновлять доску
+    if (board.owner_id !== userId) {
+      throw new ForbiddenException('Только владелец может обновлять доску');
+    }
+
+    // Проверяем ограничение на количество колонок
+    if (updateDto.columns.length > 14) {
+      throw new BadRequestException(
+        'Максимальное количество колонок — 14. Удалите лишние колонки.',
+      );
+    }
+
+    // Используем транзакцию для атомарности операций
+    return await this.dataSource.transaction(async (manager) => {
+      // 1. Получаем все существующие колонки доски
+      const existingColumns = await manager.find(BoardColumn, {
+        where: { board_id: boardId },
+        relations: ['tasks'],
+      });
+
+      // 2. Создаем Map существующих колонок для быстрого поиска
+      const existingColumnsMap = new Map(
+        existingColumns.map((col) => [col.id, col]),
+      );
+
+      // 3. Собираем ID колонок, которые реально существуют в базе и должны остаться
+      const columnIdsToKeep = updateDto.columns
+        .filter((col) => col.id && existingColumnsMap.has(col.id))
+        .map((col) => col.id);
+
+      // 4. Находим колонки для удаления
+      const columnsToDelete = existingColumns.filter(
+        (col) => !columnIdsToKeep.includes(col.id),
+      );
+
+      // 5. Проверяем, что не удаляются первая и последняя колонки
+      if (existingColumns.length > 0 && columnsToDelete.length > 0) {
+        const sortedColumns = [...existingColumns].sort(
+          (a, b) => a.position - b.position,
+        );
+        const firstColumn = sortedColumns[0];
+        const lastColumn = sortedColumns[sortedColumns.length - 1];
+
+        const deletingFirstOrLast = columnsToDelete.some(
+          (col) => col.id === firstColumn.id || col.id === lastColumn.id,
+        );
+
+        if (deletingFirstOrLast) {
+          throw new ConflictException(
+            'Невозможно удалить первую или последнюю колонку',
+          );
+        }
+      }
+
+      // 6. Проверяем, что удаляемые колонки пустые
+      for (const column of columnsToDelete) {
+        if (column.tasks && column.tasks.length > 0) {
+          throw new ConflictException(
+            `Невозможно удалить колонку "${column.name}": в ней есть задачи`,
+          );
+        }
+      }
+
+      // 7. Удаляем пустые колонки
+      if (columnsToDelete.length > 0) {
+        await manager.remove(BoardColumn, columnsToDelete);
+      }
+
+      // 8. Обрабатываем колонки из запроса (создание, обновление, установка позиций)
+      for (let position = 0; position < updateDto.columns.length; position++) {
+        const columnDto = updateDto.columns[position];
+
+        // Проверяем, существует ли колонка в базе данных
+        const existsInDb = columnDto.id && existingColumnsMap.has(columnDto.id);
+
+        if (existsInDb) {
+          // Обновляем существующую колонку
+          await manager.update(
+            BoardColumn,
+            { id: columnDto.id, board_id: boardId },
+            {
+              name: columnDto.name,
+              description: columnDto.description,
+              color: columnDto.color,
+              position,
+            },
+          );
+        } else {
+          // Создаем новую колонку (игнорируем временный id с фронта)
+          const newColumn = manager.create(BoardColumn, {
+            name: columnDto.name,
+            description: columnDto.description,
+            color: columnDto.color,
+            position,
+            board_id: boardId,
+          });
+          await manager.save(BoardColumn, newColumn);
+        }
+      }
+
+      // 9. Возвращаем обновленную доску с колонками
+      return await manager.findOne(Board, {
+        where: { id: boardId },
+        relations: ['columns', 'owner'],
+      });
+    });
   }
 
   /**
@@ -231,14 +354,14 @@ export class BoardService {
   /**
    * Получить всех участников доски
    */
-  async getMembers(boardId: string, userId: string): Promise<BoardMember[]> {
-    await this.findOne(boardId, userId); // Проверка доступа
+  // async getMembers(boardId: string, userId: string): Promise<BoardMember[]> {
+  //   await this.findOne(boardId, userId); // Проверка доступа
 
-    return this.boardMemberRepository.find({
-      where: { board_id: boardId },
-      relations: ['user'],
-    });
-  }
+  //   return this.boardMemberRepository.find({
+  //     where: { board_id: boardId },
+  //     relations: ['user'],
+  //   });
+  // }
 
   /**
    * Проверить, есть ли у пользователя доступ к доске
@@ -288,6 +411,17 @@ export class BoardService {
       throw new ForbiddenException('Только владелец может создавать колонки');
     }
 
+    // Проверяем ограничение на количество колонок
+    const currentColumnsCount = await this.boardColumnRepository.count({
+      where: { board_id: boardId },
+    });
+
+    if (currentColumnsCount >= 14) {
+      throw new BadRequestException(
+        'Достигнуто максимальное количество колонок (14). Удалите существующие колонки перед добавлением новых.',
+      );
+    }
+
     // Если position не указана, ставим в конец
     let position = createColumnDto.position;
     if (position === undefined) {
@@ -312,13 +446,33 @@ export class BoardService {
    * Получить все колонки доски
    */
   async getColumns(boardId: string, userId: string): Promise<BoardColumn[]> {
-    await this.findOne(boardId, userId); // Проверка доступа
+    // Проверяем доступ и получаем колонки в одном запросе
+    const columns = await this.boardColumnRepository
+      .createQueryBuilder('column')
+      .innerJoin(
+        'board_members',
+        'member',
+        'member.board_id = column.board_id AND member.user_id = :userId',
+        { userId },
+      )
+      .where('column.board_id = :boardId', { boardId })
+      .orderBy('column.position', 'ASC')
+      .getMany();
 
-    return this.boardColumnRepository.find({
-      where: { board_id: boardId },
-      order: { position: 'ASC' },
-      relations: ['tasks'],
-    });
+    if (columns.length === 0) {
+      // Проверяем, доска не существует или нет доступа
+      const boardExists = await this.boardRepository.findOne({
+        where: { id: boardId },
+      });
+
+      if (!boardExists) {
+        throw new NotFoundException('Доска не найдена');
+      }
+
+      throw new ForbiddenException('У вас нет доступа к этой доске');
+    }
+
+    return columns;
   }
 
   /**
@@ -329,15 +483,30 @@ export class BoardService {
     columnId: string,
     userId: string,
   ): Promise<BoardColumn> {
-    await this.findOne(boardId, userId); // Проверка доступа
-
-    const column = await this.boardColumnRepository.findOne({
-      where: { id: columnId, board_id: boardId },
-      relations: ['tasks'],
-    });
+    // Проверяем доступ и получаем колонку в одном запросе
+    const column = await this.boardColumnRepository
+      .createQueryBuilder('column')
+      .innerJoin(
+        'board_members',
+        'member',
+        'member.board_id = column.board_id AND member.user_id = :userId',
+        { userId },
+      )
+      .where('column.id = :columnId', { columnId })
+      .andWhere('column.board_id = :boardId', { boardId })
+      .getOne();
 
     if (!column) {
-      throw new NotFoundException('Колонка не найдена');
+      // Проверяем, колонка не существует или нет доступа
+      const columnExists = await this.boardColumnRepository.findOne({
+        where: { id: columnId, board_id: boardId },
+      });
+
+      if (!columnExists) {
+        throw new NotFoundException('Колонка не найдена');
+      }
+
+      throw new ForbiddenException('У вас нет доступа к этой доске');
     }
 
     return column;

@@ -70,6 +70,12 @@ export interface BoardColumn {
   updatedAt: string;
 }
 
+export interface TaskResponsible {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -80,12 +86,15 @@ export interface Task {
   column_id?: string;
   api_key_id?: string;
   webhook_id?: string;
+  responsible_id?: string | null;
   position: number;
   metadata?: Record<string, any>;
   board?: Board;
   column?: BoardColumn;
   apiKey?: ApiKey;
   webhook?: Webhook;
+  responsible?: TaskResponsible | null;
+  responsibleId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -162,6 +171,7 @@ export interface CreateTaskDto {
   board_id: string;
   column_id?: string;
   api_key_id?: string;
+  responsible_id?: string | null;
   position?: number;
   metadata?: Record<string, any>;
 }
@@ -172,6 +182,7 @@ export interface UpdateTaskDto {
   status?: TaskStatus;
   priority?: TaskPriority;
   column_id?: string;
+  responsible_id?: string | null;
   position?: number;
   metadata?: Record<string, any>;
 }

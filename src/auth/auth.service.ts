@@ -9,12 +9,24 @@ import { Repository } from 'typeorm';
 import { User } from './user.entity';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import * as bcrypt from 'bcryptjs';
+import { TelegramSettings } from '../message-settings/telegram/telegram-settings.entity';
+import { EmailSettings } from '../message-settings/email/email-settings.entity';
+import { MessageTemplate } from '../message-template/message-template.entity';
+import { TemplateType } from '../types/settings';
+
+const defaultTemplate = `Заявка,\nИмя: {{name}};\nТелефон: {{phone}};\nEmail: {{email}};\nСообщение: {{message}}`;
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(TelegramSettings)
+    private telegramSettingsRepository: Repository<TelegramSettings>,
+    @InjectRepository(EmailSettings)
+    private emailSettingsRepository: Repository<EmailSettings>,
+    @InjectRepository(MessageTemplate)
+    private messageTemplateRepository: Repository<MessageTemplate>,
     private jwtService: JwtService,
   ) {}
 
@@ -89,7 +101,55 @@ export class AuthService {
       password: hashedPassword,
     });
 
-    return this.userRepository.save(user);
+    const savedUser = await this.userRepository.save(user);
+
+    // Создаем настройки интеграций и шаблоны для нового пользователя
+    await this.initializeUserSettings(savedUser.id);
+
+    return savedUser;
+  }
+
+  /**
+   * Инициализация настроек и шаблонов для нового пользователя
+   */
+  private async initializeUserSettings(userId: string): Promise<void> {
+    // Создаем настройки Telegram (по умолчанию выключены)
+    const telegramSettings = this.telegramSettingsRepository.create({
+      user_id: userId,
+      isEnabled: false,
+    });
+    await this.telegramSettingsRepository.save(telegramSettings);
+
+    // Создаем настройки Email (по умолчанию выключены)
+    const emailSettings = this.emailSettingsRepository.create({
+      user_id: userId,
+      isEnabled: false,
+    });
+    await this.emailSettingsRepository.save(emailSettings);
+
+    // Создаем шаблон для Telegram
+    const telegramTemplate = this.messageTemplateRepository.create({
+      user_id: userId,
+      type: TemplateType.TELEGRAM,
+      messageTemplate: defaultTemplate,
+    });
+    await this.messageTemplateRepository.save(telegramTemplate);
+
+    // Создаем шаблон для Email
+    const emailTemplate = this.messageTemplateRepository.create({
+      user_id: userId,
+      type: TemplateType.EMAIL,
+      messageTemplate: defaultTemplate,
+    });
+    await this.messageTemplateRepository.save(emailTemplate);
+
+    // Создаем шаблон для Task
+    const taskTemplate = this.messageTemplateRepository.create({
+      user_id: userId,
+      type: TemplateType.TASK,
+      messageTemplate: defaultTemplate,
+    });
+    await this.messageTemplateRepository.save(taskTemplate);
   }
 
   async findByEmail(email: string): Promise<User | null> {

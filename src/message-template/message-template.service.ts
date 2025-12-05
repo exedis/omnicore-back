@@ -79,7 +79,7 @@ export class MessageTemplateService {
 
     return {
       userTemplates,
-      variablesFromMessages: getUserFields.fields,
+      variablesFromMessages: getUserFields?.fields || [],
     };
   }
 

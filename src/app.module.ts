@@ -24,7 +24,9 @@ import { EmailSettings } from './message-settings/email/email-settings.entity';
 import { Board } from './board/board.entity';
 import { BoardMember } from './board/board-member.entity';
 import { BoardColumn } from './board/board-column.entity';
+import { Invitation } from './invitation/invitation.entity';
 import { Task } from './task/task.entity';
+import { InvitationModule } from './invitation/invitation.module';
 
 @Module({
   imports: [
@@ -57,6 +59,7 @@ import { Task } from './task/task.entity';
         Board,
         BoardMember,
         BoardColumn,
+        Invitation,
         Task,
       ],
       synchronize: process.env.NODE_ENV !== 'production',
@@ -70,6 +73,7 @@ import { Task } from './task/task.entity';
     MessageFieldsModule,
     BoardModule,
     TaskModule,
+    InvitationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

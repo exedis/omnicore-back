@@ -1,11 +1,4 @@
-import {
-  IsString,
-  IsOptional,
-  IsUUID,
-  IsEnum,
-  IsObject,
-  IsInt,
-} from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsEnum, IsInt } from 'class-validator';
 import { TaskStatus, TaskPriority } from '../task.entity';
 
 export class CreateTaskDto {
@@ -31,17 +24,13 @@ export class CreateTaskDto {
   @IsOptional()
   columnId?: string;
 
-  @IsUUID()
-  @IsOptional()
-  apiKeyId?: string;
-
   @IsInt()
   @IsOptional()
   position?: number;
 
-  @IsObject()
+  @IsUUID()
   @IsOptional()
-  metadata?: Record<string, any>;
+  responsibleId?: string;
 }
 
 export class UpdateTaskDto {
@@ -69,9 +58,9 @@ export class UpdateTaskDto {
   @IsOptional()
   position?: number;
 
-  @IsObject()
+  @IsString()
   @IsOptional()
-  metadata?: Record<string, any>;
+  responsibleId?: string;
 }
 
 export class MoveTaskDto {
@@ -87,10 +76,6 @@ export class TaskQueryDto {
   @IsUUID()
   @IsOptional()
   boardId?: string;
-
-  @IsUUID()
-  @IsOptional()
-  apiKeyId?: string;
 
   @IsEnum(TaskStatus)
   @IsOptional()

@@ -1,4 +1,12 @@
-import { IsString, IsOptional, IsUUID, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsUUID,
+  IsEnum,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import { BoardRole } from '../board-member.entity';
 
 export class CreateBoardDto {
@@ -32,4 +40,41 @@ export class InviteMemberDto {
 export class RemoveMemberDto {
   @IsUUID()
   userId: string;
+}
+
+export class BoardColumnUpdateDto {
+  @IsUUID()
+  @IsOptional()
+  id?: string;
+
+  @IsString()
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsOptional()
+  @IsString()
+  color?: string;
+
+  @IsOptional()
+  position?: number;
+
+  @IsOptional()
+  @IsUUID()
+  boardId?: string;
+
+  @IsOptional()
+  createdAt?: string;
+
+  @IsOptional()
+  updatedAt?: string;
+}
+
+export class UpdateBoardWithColumnsDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BoardColumnUpdateDto)
+  columns: BoardColumnUpdateDto[];
 }

@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Post,
-  Put,
   Delete,
   Body,
   Param,
@@ -15,8 +14,8 @@ import {
 import { AuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TaskService } from './task.service';
 import { CreateTaskDto, UpdateTaskDto, TaskQueryDto } from './dto/task.dto';
-import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { UserId } from 'src/common/decorators/user-id.decorator';
+import { transformTask, transformTasks } from './task.transformer';
 
 @Controller('tasks')
 @UseGuards(AuthGuard)
@@ -26,32 +25,28 @@ export class TaskController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createTaskDto: CreateTaskDto, @UserId() userId: string) {
-    return this.taskService.create(createTaskDto, userId);
+    const task = await this.taskService.create(createTaskDto, userId);
+    return transformTask(task);
   }
 
   @Get()
   async findAll(@Query() query: TaskQueryDto, @UserId() userId: string) {
-    return this.taskService.findAll(query, userId);
+    const result = await this.taskService.findAll(query, userId);
+    return {
+      ...result,
+      tasks: transformTasks(result.tasks),
+    };
   }
 
   @Get('by-board/:id')
   async findByBoard(@Param('id') id: string, @UserId() userId: string) {
-    //
-    console.log('id findByBoard=>', id);
     return this.taskService.findByBoard(id, userId);
-  }
-
-  @Get('by-api-key/:apiKeyId')
-  async findByApiKey(
-    @Param('apiKeyId') apiKeyId: string,
-    @UserId() userId: string,
-  ) {
-    return this.taskService.findByApiKey(apiKeyId, userId);
   }
 
   @Get(':id')
   async findOne(@Param('id') id: string, @UserId() userId: string) {
-    return this.taskService.findOne(id, userId);
+    const task = await this.taskService.findOne(id, userId);
+    return transformTask(task);
   }
 
   @Patch(':id')
@@ -60,7 +55,8 @@ export class TaskController {
     @Body() updateTaskDto: UpdateTaskDto,
     @UserId() userId: string,
   ) {
-    return this.taskService.update(id, updateTaskDto, userId);
+    const task = await this.taskService.update(id, updateTaskDto, userId);
+    return transformTask(task);
   }
 
   @Delete(':id')

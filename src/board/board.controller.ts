@@ -9,21 +9,33 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Patch,
 } from '@nestjs/common';
 import { AuthGuard } from '../auth/guards/jwt-auth.guard';
 import { BoardService } from './board.service';
-import { InviteMemberDto, RemoveMemberDto } from './dto/board.dto';
 import {
-  CreateColumnDto,
-  UpdateColumnDto,
-  ReorderColumnsDto,
-} from './dto/column.dto';
+  InviteMemberDto,
+  RemoveMemberDto,
+  UpdateBoardWithColumnsDto,
+} from './dto/board.dto';
+import { CreateColumnDto, UpdateColumnDto } from './dto/column.dto';
 import { UserId } from 'src/common/decorators/user-id.decorator';
 
 @Controller('boards')
 @UseGuards(AuthGuard)
 export class BoardController {
   constructor(private readonly boardService: BoardService) {}
+
+  // private mapColumnTasks(column: any) {
+  //   if (!column || !column.tasks) {
+  //     return column;
+  //   }
+
+  //   return {
+  //     ...column,
+  //     tasks: transformTasks(column.tasks),
+  //   };
+  // }
 
   // Доски создаются автоматически при создании API ключа
   // Прямое создание досок отключено
@@ -33,12 +45,25 @@ export class BoardController {
     return this.boardService.findAll(userId);
   }
 
-  @Get(':id')
-  async findOne(@Param('id') id: string, @UserId() userId: string) {
-    return this.boardService.findOne(id, userId);
-  }
+  // @Get(':id')
+  // async findOne(@Param('id') id: string, @UserId() userId: string) {
+  //   return this.boardService.findOne(id, userId);
+  // }
 
   // Обновление и удаление досок происходит через API ключи
+
+  /**
+   * Универсальный метод обновления колонок доски
+   * Позволяет добавить/удалить/переименовать колонки, изменить их порядок
+   */
+  @Patch(':id')
+  async updateBoard(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateBoardWithColumnsDto,
+    @UserId() userId: string,
+  ) {
+    return this.boardService.updateBoardWithColumns(id, updateDto, userId);
+  }
 
   @Post(':id/members')
   @HttpCode(HttpStatus.CREATED)
@@ -60,10 +85,10 @@ export class BoardController {
     await this.boardService.removeMember(id, removeMemberDto, userId);
   }
 
-  @Get(':id/members')
-  async getMembers(@Param('id') id: string, @UserId() userId: string) {
-    return this.boardService.getMembers(id, userId);
-  }
+  // @Get(':id/members')
+  // async getMembers(@Param('id') id: string, @UserId() userId: string) {
+  //   return this.boardService.getMembers(id, userId);
+  // }
 
   // ===== ENDPOINTS ДЛЯ КОЛОНОК =====
 
@@ -74,22 +99,23 @@ export class BoardController {
     @Body() createColumnDto: CreateColumnDto,
     @UserId() userId: string,
   ) {
-    return this.boardService.createColumn(boardId, createColumnDto, userId);
+    await this.boardService.createColumn(boardId, createColumnDto, userId);
   }
 
   @Get(':id/columns')
   async getColumns(@Param('id') boardId: string, @UserId() userId: string) {
-    return this.boardService.getColumns(boardId, userId);
+    return await this.boardService.getColumns(boardId, userId);
   }
 
-  @Get(':id/columns/:columnId')
-  async getColumn(
-    @Param('id') boardId: string,
-    @Param('columnId') columnId: string,
-    @UserId() userId: string,
-  ) {
-    return this.boardService.getColumn(boardId, columnId, userId);
-  }
+  // @Get(':id/columns/:columnId')
+  // async getColumn(
+  //   @Param('id') boardId: string,
+  //   @Param('columnId') columnId: string,
+  //   @UserId() userId: string,
+  // ) {
+  //   const column = await this.boardService.getColumn(boardId, columnId, userId);
+  //   return this.mapColumnTasks(column);
+  // }
 
   @Put(':id/columns/:columnId')
   async updateColumn(
@@ -98,7 +124,7 @@ export class BoardController {
     @Body() updateColumnDto: UpdateColumnDto,
     @UserId() userId: string,
   ) {
-    return this.boardService.updateColumn(
+    await this.boardService.updateColumn(
       boardId,
       columnId,
       updateColumnDto,
@@ -106,22 +132,22 @@ export class BoardController {
     );
   }
 
-  @Delete(':id/columns/:columnId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteColumn(
-    @Param('id') boardId: string,
-    @Param('columnId') columnId: string,
-    @UserId() userId: string,
-  ) {
-    await this.boardService.deleteColumn(boardId, columnId, userId);
-  }
+  // @Delete(':id/columns/:columnId')
+  // @HttpCode(HttpStatus.NO_CONTENT)
+  // async deleteColumn(
+  //   @Param('id') boardId: string,
+  //   @Param('columnId') columnId: string,
+  //   @UserId() userId: string,
+  // ) {
+  //   await this.boardService.deleteColumn(boardId, columnId, userId);
+  // }
 
-  @Put(':id/columns/reorder')
-  async reorderColumns(
-    @Param('id') boardId: string,
-    @Body() reorderDto: ReorderColumnsDto,
-    @UserId() userId: string,
-  ) {
-    return this.boardService.reorderColumns(boardId, reorderDto, userId);
-  }
+  // @Put(':id/columns/reorder')
+  // async reorderColumns(
+  //   @Param('id') boardId: string,
+  //   @Body() reorderDto: ReorderColumnsDto,
+  //   @UserId() userId: string,
+  // ) {
+  //   await this.boardService.reorderColumns(boardId, reorderDto, userId);
+  // }
 }
