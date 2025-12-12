@@ -367,6 +367,23 @@ export class BoardService {
    * Проверить, есть ли у пользователя доступ к доске
    */
   async checkAccess(boardId: string, userId: string): Promise<boolean> {
+    // Проверяем, является ли пользователь владельцем доски
+    const board = await this.boardRepository.findOne({
+      where: { id: boardId },
+      select: ['id', 'owner_id'],
+    });
+
+    // Если доска не найдена, доступа нет
+    if (!board) {
+      return false;
+    }
+
+    // Если пользователь владелец - доступ есть
+    if (board.owner_id === userId) {
+      return true;
+    }
+
+    // Проверяем, является ли пользователь участником доски
     const member = await this.boardMemberRepository.findOne({
       where: {
         board_id: boardId,

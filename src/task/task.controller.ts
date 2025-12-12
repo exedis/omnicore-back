@@ -45,8 +45,12 @@ export class TaskController {
 
   @Get(':id')
   async findOne(@Param('id') id: string, @UserId() userId: string) {
-    const task = await this.taskService.findOne(id, userId);
-    return transformTask(task);
+    const result = await this.taskService.findOne(id, userId);
+    return {
+      task: transformTask(result.task),
+      boardColumns: result.boardColumns,
+      currentColumnId: result.currentColumnId,
+    };
   }
 
   @Patch(':id')

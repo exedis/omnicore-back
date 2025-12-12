@@ -20,7 +20,7 @@ export class CreateTaskDto {
   @IsUUID()
   boardId: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   columnId?: string;
 
@@ -28,7 +28,7 @@ export class CreateTaskDto {
   @IsOptional()
   position?: number;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   responsibleId?: string;
 }

@@ -38,7 +38,23 @@ export class TaskService {
     // Проверяем доступ к доске
     await this.boardService.findOne(createTaskDto.boardId, userId);
 
-    const responsibleId = createTaskDto.responsibleId;
+    // Преобразуем пустые строки в null
+    const responsibleId =
+      createTaskDto.responsibleId === '' ? null : createTaskDto.responsibleId;
+    let columnId =
+      createTaskDto.columnId === '' ? null : createTaskDto.columnId;
+
+    // Если колонка не указана - используем первую колонку доски
+    if (!columnId) {
+      const columns = await this.boardColumnRepository.find({
+        where: { board_id: createTaskDto.boardId },
+        order: { position: 'ASC' },
+      });
+
+      if (columns.length > 0) {
+        columnId = columns[0].id;
+      }
+    }
 
     // Если ответственный указан явно - проверяем что он участник доски
     if (responsibleId) {
@@ -54,7 +70,7 @@ export class TaskService {
     const task = this.taskRepository.create({
       ...createTaskDto,
       board_id: createTaskDto.boardId,
-      column_id: createTaskDto.columnId,
+      column_id: columnId,
       responsible_id: responsibleId,
     });
 
@@ -62,14 +78,7 @@ export class TaskService {
 
     const savedTaskWithRelations = await this.taskRepository.findOne({
       where: { id: savedTask.id },
-      relations: [
-        'board',
-        'column',
-        'apiKey',
-        'apiKey.user',
-        'webhook',
-        'responsible',
-      ],
+      relations: ['board', 'column', 'webhook', 'responsible'],
     });
 
     if (!savedTaskWithRelations) {
@@ -166,10 +175,22 @@ export class TaskService {
   /**
    * Получить задачу по ID
    */
-  async findOne(taskId: string, userId: string): Promise<Task> {
+  async findOne(
+    taskId: string,
+    userId: string,
+  ): Promise<{
+    task: Task;
+    boardColumns: Array<{
+      id: string;
+      name: string;
+      position: number;
+      color: string;
+    }>;
+    currentColumnId: string | null;
+  }> {
     const task = await this.taskRepository.findOne({
       where: { id: taskId },
-      // relations: ['board', 'webhook', 'responsible', 'column'],
+      relations: ['board', 'webhook', 'responsible', 'column'],
     });
 
     if (!task) {
@@ -185,7 +206,18 @@ export class TaskService {
       throw new ForbiddenException('У вас нет доступа к этой задаче');
     }
 
-    return task;
+    // Получаем все колонки доски
+    const columns = await this.boardColumnRepository.find({
+      where: { board_id: task.board_id },
+      order: { position: 'ASC' },
+      select: ['id', 'name', 'position', 'color'],
+    });
+
+    return {
+      task,
+      boardColumns: columns,
+      currentColumnId: task.column_id,
+    };
   }
 
   /**
@@ -196,7 +228,7 @@ export class TaskService {
     updateTaskDto: UpdateTaskDto,
     userId: string,
   ): Promise<Task> {
-    const task = await this.findOne(taskId, userId);
+    const { task } = await this.findOne(taskId, userId);
     // Если меняется ответственный - проверяем что он является участником доски
     // if (updateTaskDto.responsibleId !== undefined) {
     //   if (updateTaskDto.responsibleId !== null) {
@@ -281,7 +313,7 @@ export class TaskService {
    * Удалить задачу
    */
   async remove(taskId: string, userId: string): Promise<void> {
-    const task = await this.findOne(taskId, userId);
+    const { task } = await this.findOne(taskId, userId);
     await this.taskRepository.remove(task);
   }
 
@@ -292,16 +324,11 @@ export class TaskService {
     boardId: string,
     userId: string,
   ): Promise<TaskByBoardResponsibleResponse[]> {
-    //TODO: Добавить нормальную проверку доступа к доске
-    const memberships = await this.boardMemberRepository.find({
-      where: { user_id: userId },
-      select: ['board_id'],
-    });
+    // Проверяем, что доска существует и у пользователя есть доступ
+    const board = await this.boardService.findOne(boardId, userId);
 
-    const accessibleBoardIds = new Set(memberships.map((m) => m.board_id));
-
-    if (!accessibleBoardIds.has(boardId)) {
-      throw new ForbiddenException('У вас нет доступа к этой доске');
+    if (!board) {
+      throw new NotFoundException('Доска не найдена');
     }
 
     const queryBuilder = this.taskRepository
